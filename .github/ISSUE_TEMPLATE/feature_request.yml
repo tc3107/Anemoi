@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an idea to improve the app
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Describe the use case first, then the proposed solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem does this solve?
+      placeholder: It is hard to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: Add a screen/button/flow that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: I also considered...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, references, or technical notes

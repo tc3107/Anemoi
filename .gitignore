@@ -1,15 +1,41 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+# Android/Gradle build artifacts
+.gradle/
+.kotlin/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android packaging outputs
+*.apk
+*.aab
+*.ap_
+*.aab.sha256
+output-metadata.json
+
+# Local Android SDK config
 local.properties
+
+# IDE/editor files
+*.iml
+.idea/
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Signing and local secrets
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+google-services.json
+app/google-services.json
+secrets.properties
+local.properties.*
+!local.properties.example
+.env
+.env.*
+!.env.example
