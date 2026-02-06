@@ -15,11 +15,13 @@ import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -37,6 +39,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -50,7 +54,10 @@ import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
 import com.example.anemoi.ui.components.WeatherDisplay
 import com.example.anemoi.viewmodel.WeatherViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class SheetValue { Collapsed, Expanded }
@@ -63,6 +70,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val screenTapInteractionSource = remember { MutableInteractionSource() }
     
     val favorites = uiState.favorites
     val searchedLocation = remember(uiState.searchedLocation, uiState.selectedLocation, uiState.isFollowMode, favorites) {
@@ -173,6 +181,15 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             )
         }
 
+        LaunchedEffect(anchoredDraggableState) {
+            snapshotFlow { anchoredDraggableState.currentValue }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+        }
+
         val nestedScrollConnection = remember(anchoredDraggableState) {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -233,7 +250,94 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
         Box(modifier = Modifier
             .fillMaxSize()
+            .pointerInput(anchoredDraggableState.currentValue, uiState.isOrganizerMode, uiState.isSettingsOpen) {
+                if (uiState.isOrganizerMode || uiState.isSettingsOpen) return@pointerInput
+
+                var upwardDragAccum = 0f
+                var accumDx = 0f
+                var accumDy = 0f
+                var isSheetGesture = false
+                val rampDistance = with(density) { 220.dp.toPx() }
+                val commitExpandThreshold = with(density) { 24.dp.toPx() }
+                val intentDistance = with(density) { 18.dp.toPx() }
+                val verticalIntentRatio = 0.75f
+                val velocityTracker = VelocityTracker()
+
+                detectDragGestures(
+                    onDragStart = {
+                        upwardDragAccum = 0f
+                        accumDx = 0f
+                        accumDy = 0f
+                        isSheetGesture = false
+                        velocityTracker.resetTracking()
+                    },
+                    onDrag = { change, dragAmount ->
+                        accumDx += abs(dragAmount.x)
+                        accumDy += abs(dragAmount.y)
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                        if (!isSheetGesture) {
+                            val movedEnough = (accumDx + accumDy) >= intentDistance
+                            if (movedEnough) {
+                                // More forgiving than strict vertical: allows moderate horizontal drift.
+                                isSheetGesture = accumDy >= accumDx * verticalIntentRatio
+                            }
+                        }
+
+                        if (!isSheetGesture) return@detectDragGestures
+
+                        val amplifiedDragY = if (dragAmount.y < 0f) {
+                            // Progressive curve: starts gentle, ramps up as user keeps pulling upward.
+                            upwardDragAccum += -dragAmount.y
+                            val progress = (upwardDragAccum / rampDistance).coerceIn(0f, 1f)
+                            val gain = 1.05f + (1.95f - 1.05f) * progress
+                            dragAmount.y * gain
+                        } else {
+                            upwardDragAccum = (upwardDragAccum - dragAmount.y).coerceAtLeast(0f)
+                            dragAmount.y * 1.15f
+                        }
+
+                        val consumed = anchoredDraggableState.dispatchRawDelta(amplifiedDragY)
+                        if (consumed != 0f) change.consume()
+                    },
+                    onDragEnd = {
+                        if (!isSheetGesture) return@detectDragGestures
+
+                        val releaseVelocityY = velocityTracker.calculateVelocity().y
+                        val shouldCommitExpanded =
+                            (upwardDragAccum >= commitExpandThreshold || releaseVelocityY <= -1200f) &&
+                                anchoredDraggableState.currentValue != SheetValue.Expanded
+                        upwardDragAccum = 0f
+                        accumDx = 0f
+                        accumDy = 0f
+                        isSheetGesture = false
+
+                        coroutineScope.launch {
+                            if (shouldCommitExpanded) {
+                                anchoredDraggableState.animateTo(SheetValue.Expanded)
+                            } else {
+                                // Feed release velocity so the sheet carries momentum after finger lift.
+                                anchoredDraggableState.settle(releaseVelocityY * 1.25f)
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        val hadSheetGesture = isSheetGesture
+                        upwardDragAccum = 0f
+                        accumDx = 0f
+                        accumDy = 0f
+                        isSheetGesture = false
+                        if (hadSheetGesture) {
+                            coroutineScope.launch {
+                                anchoredDraggableState.settle(0f)
+                            }
+                        }
+                    }
+                )
+            }
             .combinedClickable(
+                interactionSource = screenTapInteractionSource,
+                indication = null,
                 onClick = {},
                 onLongClick = { 
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -431,7 +535,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                             handleHeight = handleHeight,
                             onHandleClick = {
                                 coroutineScope.launch { 
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     anchoredDraggableState.animateTo(
                                         if (anchoredDraggableState.targetValue == SheetValue.Collapsed) SheetValue.Expanded 
                                         else SheetValue.Collapsed

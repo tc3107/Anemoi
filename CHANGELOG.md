@@ -19,6 +19,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Adjusted primary value vertical alignment on temperature and precipitation line graphs.
 - Standardized hourly weather condition icon rendering to a light gray tint.
 - Fixed startup paging so default or selected non-favorite locations (including New York fallback) open on a weather data page instead of the location-mode dash screen.
+- Fixed pull-up sheet haptics to trigger consistently on actual swipe/tap commit transitions (expand/collapse), not only handle interactions.
 
 ## [0.1.0] - 2026-02-06
 
