@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning once tagged releases begin.
 
-## [Unreleased]
+## [0.2.0]
 
 ### Changed
 
@@ -28,7 +28,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Fixed a location navigation edge case where visuals could appear between two locations by synchronizing page-driven selection to `settledPage` (post-snap) instead of transient `currentPage` updates during swipe motion.
 - Hardened map centering transitions by tracking the last center target and applying a recovery snap to exact coordinates when animation finishes but the map center is still offset, preventing persistent in-between map states.
 - Refined settings segmented slider drag behavior by clamping manual swipe movement to the first/last option bounds and reducing haptic spam to one light tick per segment transition.
-- Renamed the app label from "Anemoi Forecast" to "anemoi" for launcher and app title consistency.
+- Renamed the app label from "Anemoi Forecast" to "Anemoi" for launcher and app title consistency.
 
 ## [0.1.0] - 2026-02-06
 
