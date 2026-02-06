@@ -20,6 +20,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Standardized hourly weather condition icon rendering to a light gray tint.
 - Fixed startup paging so default or selected non-favorite locations (including New York fallback) open on a weather data page instead of the location-mode dash screen.
 - Fixed pull-up sheet haptics to trigger consistently on actual swipe/tap commit transitions (expand/collapse), not only handle interactions.
+- Made search and pull-up sheet interactions mutually exclusive: expanding the sheet clears active search input, and starting a search collapses the sheet.
+- Smoothed search dropdown dismissal by preserving rendered suggestions until the close animation fully completes.
+- Fixed an intermittent search bar focus/keyboard race where tapping the field could immediately close the keyboard.
 
 ## [0.1.0] - 2026-02-06
 

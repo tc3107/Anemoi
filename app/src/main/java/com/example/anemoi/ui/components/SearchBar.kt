@@ -55,17 +55,9 @@ fun SearchBar(
     var expanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    val isKeyboardVisible = WindowInsets.isImeVisible
-
-    LaunchedEffect(isFocused, query, isKeyboardVisible) {
+    LaunchedEffect(isFocused, query) {
         if (isFocused || query.isNotEmpty()) {
-            if (isKeyboardVisible || query.isNotEmpty()) {
-                expanded = true
-            } else {
-                delay(100)
-                expanded = false
-                focusManager.clearFocus()
-            }
+            expanded = true
         } else {
             delay(200)
             expanded = false
@@ -76,6 +68,26 @@ fun SearchBar(
         targetValue = if (expanded) 24.dp else 28.dp,
         label = "cornerAnimation"
     )
+
+    val shouldShowDropdown = expanded && query.isNotEmpty() && suggestions.isNotEmpty()
+    val dropdownVisibleState = remember { MutableTransitionState(false) }
+    var renderedSuggestions by remember { mutableStateOf<List<LocationItem>>(emptyList()) }
+
+    LaunchedEffect(shouldShowDropdown) {
+        dropdownVisibleState.targetState = shouldShowDropdown
+    }
+
+    LaunchedEffect(shouldShowDropdown, suggestions) {
+        if (shouldShowDropdown) {
+            renderedSuggestions = suggestions
+        }
+    }
+
+    LaunchedEffect(dropdownVisibleState.currentState, dropdownVisibleState.targetState) {
+        if (!dropdownVisibleState.currentState && !dropdownVisibleState.targetState) {
+            renderedSuggestions = emptyList()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -149,51 +161,49 @@ fun SearchBar(
             }
 
             AnimatedVisibility(
-                visible = expanded && query.isNotEmpty(),
+                visibleState = dropdownVisibleState,
                 enter = expandVertically(animationSpec = tween(300)) + fadeIn(),
                 exit = shrinkVertically(animationSpec = tween(300)) + fadeOut()
             ) {
-                if (suggestions.isNotEmpty()) {
-                    Column {
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 16.dp))
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 300.dp)
-                        ) {
-                            // Using a combination of index and name to ensure key uniqueness during search
-                            items(suggestions, key = { "${it.name}_${it.lat}_${it.lon}" }) { location ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .animateItem(
-                                            fadeInSpec = tween(300),
-                                            fadeOutSpec = tween(300),
-                                            placementSpec = tween(300)
-                                        )
-                                        .clickable {
-                                            onLocationSelected(location)
-                                            focusManager.clearFocus()
-                                        }
-                                        .padding(vertical = 4.dp, horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    IconButton(onClick = { onToggleFavorite(location) }) {
-                                        Icon(
-                                            imageVector = if (location.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                                            contentDescription = "Favorite",
-                                            tint = if (location.isFavorite) Color(0xFFFFD700) else Color.White
-                                        )
+                Column {
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 16.dp))
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 300.dp)
+                    ) {
+                        // Using a combination of index and name to ensure key uniqueness during search
+                        items(renderedSuggestions, key = { "${it.name}_${it.lat}_${it.lon}" }) { location ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateItem(
+                                        fadeInSpec = tween(300),
+                                        fadeOutSpec = tween(300),
+                                        placementSpec = tween(300)
+                                    )
+                                    .clickable {
+                                        onLocationSelected(location)
+                                        focusManager.clearFocus()
                                     }
-                                    Text(
-                                        text = location.name,
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
+                                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = { onToggleFavorite(location) }) {
+                                    Icon(
+                                        imageVector = if (location.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                        contentDescription = "Favorite",
+                                        tint = if (location.isFavorite) Color(0xFFFFD700) else Color.White
                                     )
                                 }
+                                Text(
+                                    text = location.name,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }

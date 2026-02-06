@@ -180,6 +180,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 decayAnimationSpec = decayAnimationSpec
             )
         }
+        val latestSearchQuery by rememberUpdatedState(uiState.searchQuery)
 
         LaunchedEffect(anchoredDraggableState) {
             snapshotFlow { anchoredDraggableState.currentValue }
@@ -187,6 +188,16 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 .drop(1)
                 .collect {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+        }
+
+        LaunchedEffect(anchoredDraggableState) {
+            snapshotFlow { anchoredDraggableState.currentValue }
+                .distinctUntilChanged()
+                .collect { sheetValue ->
+                    if (sheetValue == SheetValue.Expanded && latestSearchQuery.isNotEmpty()) {
+                        viewModel.onSearchQueryChanged("")
+                    }
                 }
         }
 
@@ -485,7 +496,12 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                         Spacer(modifier = Modifier.height(16.dp))
                         SearchBar(
                             query = uiState.searchQuery,
-                            onQueryChange = viewModel::onSearchQueryChanged,
+                            onQueryChange = { query ->
+                                if (query.isNotEmpty() && anchoredDraggableState.targetValue == SheetValue.Expanded) {
+                                    coroutineScope.launch { anchoredDraggableState.animateTo(SheetValue.Collapsed) }
+                                }
+                                viewModel.onSearchQueryChanged(query)
+                            },
                             suggestions = uiState.suggestions,
                             favorites = favorites,
                             onLocationSelected = viewModel::onLocationSelected,
