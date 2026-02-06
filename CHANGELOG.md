@@ -27,6 +27,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Updated search-field keyboard dismissal handling to clear the query text and remove focus when the IME is closed, ensuring search fully deselects when the keyboard is put away.
 - Fixed a location navigation edge case where visuals could appear between two locations by synchronizing page-driven selection to `settledPage` (post-snap) instead of transient `currentPage` updates during swipe motion.
 - Hardened map centering transitions by tracking the last center target and applying a recovery snap to exact coordinates when animation finishes but the map center is still offset, preventing persistent in-between map states.
+- Refined settings segmented slider drag behavior by clamping manual swipe movement to the first/last option bounds and reducing haptic spam to one light tick per segment transition.
 
 ## [0.1.0] - 2026-02-06
 

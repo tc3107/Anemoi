@@ -48,6 +48,7 @@ fun SegmentedSelector(
 
     val animOffset = remember { Animatable(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var lastDragSegmentIndex by remember { mutableIntStateOf(selectedIndex) }
     
     // Tracks the raw finger position relative to the track start
     var rawFingerX by remember { mutableFloatStateOf(0f) }
@@ -103,21 +104,35 @@ fun SegmentedSelector(
                 detectDragGestures(
                     onDragStart = { 
                         isDragging = true
-                        rawFingerX = animOffset.value 
+                        val minAnchor = anchors.firstOrNull() ?: 0f
+                        val maxAnchor = anchors.lastOrNull() ?: 0f
+                        rawFingerX = animOffset.value.coerceIn(minAnchor, maxAnchor)
+                        lastDragSegmentIndex = anchors.minByOrNull { abs(it - rawFingerX) }
+                            ?.let { anchors.indexOf(it) } ?: selectedIndex
                     },
                     onDragEnd = {
                         isDragging = false
+                        lastDragSegmentIndex = selectedIndex
                         val closestIndex = anchors.minByOrNull { abs(it - rawFingerX) }
                             ?.let { anchors.indexOf(it) } ?: selectedIndex
                         onOptionSelected(closestIndex)
                     },
-                    onDragCancel = { isDragging = false },
+                    onDragCancel = {
+                        isDragging = false
+                        lastDragSegmentIndex = selectedIndex
+                    },
                     onDrag = { change, amount ->
                         change.consume()
-                        rawFingerX += amount.x
+                        val minAnchor = anchors.firstOrNull() ?: 0f
+                        val maxAnchor = anchors.lastOrNull() ?: 0f
+                        rawFingerX = (rawFingerX + amount.x).coerceIn(minAnchor, maxAnchor)
                         // Visual snapping: notify parent immediately when midpoint is crossed
                         val closestIndex = anchors.minByOrNull { abs(it - rawFingerX) }
                             ?.let { anchors.indexOf(it) } ?: selectedIndex
+                        if (closestIndex != lastDragSegmentIndex) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            lastDragSegmentIndex = closestIndex
+                        }
                         if (closestIndex != selectedIndex) {
                             onOptionSelected(closestIndex)
                         }
@@ -200,6 +215,8 @@ fun SegmentedSelector(
                     .fillMaxSize()
                     .graphicsLayer {
                         translationX = outerPaddingPx + animOffset.value
+                    }
+                    .graphicsLayer {
                         clip = true
                         shape = RoundedCornerShape(8.dp)
                     }
@@ -209,7 +226,7 @@ fun SegmentedSelector(
                         .fillMaxSize()
                         .graphicsLayer {
                             translationX = -(outerPaddingPx + animOffset.value)
-                        }
+                        },
                 ) {
                     Row(
                         modifier = Modifier
