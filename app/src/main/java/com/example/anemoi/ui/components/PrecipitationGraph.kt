@@ -192,17 +192,10 @@ fun PrecipitationGraph(
                             curF
                         }
                         val interpolatedProb = getInterpolatedProb(fraction)
-                        val hourIdx = (fraction * 24).toInt().coerceIn(0, dayAmounts.size - 1)
-                        val amount = if (dayAmounts.isNotEmpty()) dayAmounts[hourIdx] else 0.0
-
                         // Measurements matching TemperatureGraph styling
                         val probLayout = textMeasurer.measure(
                             "${interpolatedProb.roundToInt()}%", 
                             TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        )
-                        val amountLayout = textMeasurer.measure(
-                            String.format("%.1f mm", amount), 
-                            TextStyle(color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                         )
                         val timeLayout = textMeasurer.measure(
                             String.format("%02d:%02d", (fraction * 24).toInt() % 24, ((fraction * 24 - (fraction * 24).toInt()) * 60).toInt()), 
@@ -215,14 +208,7 @@ fun PrecipitationGraph(
                         val probY = -32.dp.toPx()
                         val clockY = -4.dp.toPx()
                         
-                        // mm value center-aligned exactly in the gap between % bottom and clock top
-                        val probBottom = probY + probLayout.size.height
-                        val clockTop = clockY
-                        val gapCenter = (probBottom + clockTop) / 2f
-                        val amountY = gapCenter - (amountLayout.size.height / 2f)
-
                         drawText(probLayout, topLeft = Offset(xOffset - probLayout.size.width, probY))
-                        drawText(amountLayout, topLeft = Offset(xOffset - amountLayout.size.width, amountY))
                         drawText(timeLayout, topLeft = Offset(xOffset - timeLayout.size.width, clockY))
                     }
                 }

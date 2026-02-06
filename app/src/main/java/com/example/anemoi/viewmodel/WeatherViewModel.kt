@@ -134,6 +134,11 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val obfuscationModeKey = stringPreferencesKey("obfuscation_mode")
     private val gridKmKey = floatPreferencesKey("grid_km")
     private val experimentalKey = booleanPreferencesKey("experimental_enabled")
+    private val defaultLocation = LocationItem(
+        name = "New York",
+        lat = 40.7128,
+        lon = -74.0060
+    )
 
     init {
         loadSettings()
@@ -143,61 +148,72 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private fun loadSettings() {
         viewModelScope.launch {
-            applicationContext.dataStore.data.firstOrNull()?.let { prefs ->
-                val favs = prefs[favoritesKey]?.let {
-                    try { json.decodeFromString<List<LocationItem>>(it) } catch (e: Exception) { emptyList() }
-                } ?: emptyList()
-                
-                val searched = prefs[searchedLocationKey]?.let {
-                    try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
-                }
+            val prefs = applicationContext.dataStore.data.firstOrNull()
+            if (prefs == null) {
+                addLog("Preferences unavailable, defaulting to New York")
+                onLocationSelected(defaultLocation, isManualSearch = false)
+                return@launch
+            }
 
-                val live = prefs[liveLocationKey]?.let {
-                    try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
-                }
+            val favs = prefs[favoritesKey]?.let {
+                try { json.decodeFromString<List<LocationItem>>(it) } catch (e: Exception) { emptyList() }
+            } ?: emptyList()
+            
+            val searched = prefs[searchedLocationKey]?.let {
+                try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
+            }
 
-                _uiState.update { state ->
-                    state.copy(
-                        favorites = favs,
-                        searchedLocation = searched,
-                        lastLiveLocation = live,
-                        isFollowMode = prefs[followModeKey] ?: false,
-                        tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
-                        pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
-                        customValuesEnabled = prefs[customValuesKey] ?: false,
-                        mapZoom = prefs[mapZoomKey] ?: 16f,
-                        blurStrength = prefs[blurStrengthKey] ?: 6f,
-                        tintAlpha = prefs[tintAlphaKey] ?: 0.1f,
-                        textAlpha = prefs[textAlphaKey] ?: 0.8f,
-                        sheetBlurStrength = prefs[sheetBlurKey] ?: 30f,
-                        sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
-                        searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
-                        obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
-                        gridKm = prefs[gridKmKey] ?: 5.0f,
-                        experimentalEnabled = prefs[experimentalKey] ?: false
-                    )
-                }
-                
-                // Pre-cache tiles for favorites
-                preCacheLocations(favs + listOfNotNull(searched, live))
+            val live = prefs[liveLocationKey]?.let {
+                try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
+            }
 
-                if (_uiState.value.isFollowMode) {
-                    startFollowMode(applicationContext)
-                }
+            _uiState.update { state ->
+                state.copy(
+                    favorites = favs,
+                    searchedLocation = searched,
+                    lastLiveLocation = live,
+                    isFollowMode = prefs[followModeKey] ?: false,
+                    tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
+                    pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
+                    customValuesEnabled = prefs[customValuesKey] ?: false,
+                    mapZoom = prefs[mapZoomKey] ?: 16f,
+                    blurStrength = prefs[blurStrengthKey] ?: 6f,
+                    tintAlpha = prefs[tintAlphaKey] ?: 0.1f,
+                    textAlpha = prefs[textAlphaKey] ?: 0.8f,
+                    sheetBlurStrength = prefs[sheetBlurKey] ?: 30f,
+                    sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
+                    searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
+                    obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
+                    gridKm = prefs[gridKmKey] ?: 5.0f,
+                    experimentalEnabled = prefs[experimentalKey] ?: false
+                )
+            }
+            
+            // Pre-cache tiles for favorites
+            preCacheLocations(favs + listOfNotNull(searched, live))
 
-                prefs[lastLocationKey]?.let { jsonStr ->
-                    try {
-                        val location = json.decodeFromString<LocationItem>(jsonStr)
-                        lastLocation = location
-                        _uiState.update { it.copy(selectedLocation = location) }
-                        if (!_uiState.value.isFollowMode) {
-                            fetchWeather(location)
-                        }
-                    } catch (e: Exception) {
-                        addLog("Load failed: ${e.message}")
+            if (_uiState.value.isFollowMode) {
+                startFollowMode(applicationContext)
+            }
+
+            prefs[lastLocationKey]?.let { jsonStr ->
+                try {
+                    val location = json.decodeFromString<LocationItem>(jsonStr)
+                    lastLocation = location
+                    _uiState.update { it.copy(selectedLocation = location) }
+                    if (!_uiState.value.isFollowMode) {
+                        fetchWeather(location)
                     }
+                } catch (e: Exception) {
+                    addLog("Load failed: ${e.message}")
                 }
             }
+
+            if (_uiState.value.selectedLocation == null) {
+                addLog("No saved location found, defaulting to New York")
+                onLocationSelected(defaultLocation, isManualSearch = false)
+            }
+            
         }
     }
 

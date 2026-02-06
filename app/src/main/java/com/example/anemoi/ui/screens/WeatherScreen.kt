@@ -84,6 +84,18 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
     var isReady by remember { mutableStateOf(false) }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.entries.all { it.value }) {
+            if (pagerState.currentPage == 0) {
+                viewModel.setFollowMode(true, context)
+            } else {
+                viewModel.getCurrentLocation(context)
+            }
+        }
+    }
+
     LaunchedEffect(uiState.selectedLocation) {
         if (!isReady && uiState.selectedLocation != null) {
             pagerState.scrollToPage(targetPage)
@@ -99,6 +111,13 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 if (!uiState.isFollowMode) {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                         viewModel.setFollowMode(true, context)
+                    } else {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
                     }
                 }
             } else {
@@ -201,18 +220,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 viewModel.toggleSettings(false)
             } else {
                 coroutineScope.launch { anchoredDraggableState.animateTo(SheetValue.Collapsed) }
-            }
-        }
-
-        val permissionLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
-            if (permissions.entries.all { it.value }) {
-                if (pagerState.currentPage == 0) {
-                    viewModel.setFollowMode(true, context)
-                } else {
-                    viewModel.getCurrentLocation(context)
-                }
             }
         }
 
