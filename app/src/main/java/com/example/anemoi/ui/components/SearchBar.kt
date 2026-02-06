@@ -59,13 +59,31 @@ fun SearchBar(
     val focusManager = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
     var wasSearchFieldFocused by remember { mutableStateOf(false) }
+    val isKeyboardVisible = WindowInsets.isImeVisible
+    var hadVisibleKeyboardThisFocusSession by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isFocused, query) {
-        if (isFocused || query.isNotEmpty()) {
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
             expanded = true
         } else {
             delay(200)
             expanded = false
+        }
+    }
+
+    LaunchedEffect(isFocused, isKeyboardVisible) {
+        if (!isFocused) {
+            hadVisibleKeyboardThisFocusSession = false
+            return@LaunchedEffect
+        }
+
+        if (isKeyboardVisible) {
+            hadVisibleKeyboardThisFocusSession = true
+        } else if (hadVisibleKeyboardThisFocusSession) {
+            // Keyboard was open for this focus session and is now dismissed -> clear and deselect search.
+            onQueryChange("")
+            focusManager.clearFocus()
+            hadVisibleKeyboardThisFocusSession = false
         }
     }
 
@@ -74,7 +92,7 @@ fun SearchBar(
         label = "cornerAnimation"
     )
 
-    val shouldShowDropdown = expanded && query.isNotEmpty() && suggestions.isNotEmpty()
+    val shouldShowDropdown = isFocused && expanded && query.isNotEmpty() && suggestions.isNotEmpty()
     val dropdownVisibleState = remember { MutableTransitionState(false) }
     var renderedSuggestions by remember { mutableStateOf<List<LocationItem>>(emptyList()) }
 
