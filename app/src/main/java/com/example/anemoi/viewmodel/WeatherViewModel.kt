@@ -67,7 +67,7 @@ data class WeatherUiState(
     val blurStrength: Float = 6f,
     val tintAlpha: Float = 0.1f,
     val textAlpha: Float = 0.8f,
-    val sheetBlurStrength: Float = 30f,
+    val sheetBlurStrength: Float = 16f,
     val sheetDistortion: Float = 0.2f,
     val searchBarTintAlpha: Float = 0.15f,
     val obfuscationMode: ObfuscationMode = ObfuscationMode.PRECISE,
@@ -113,8 +113,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private var autoUpdateJob: Job? = null
     private var stalenessCheckJob: Job? = null
     private var followModeJob: Job? = null
+    private var startupPrefetchJob: Job? = null
     private var lastFetchTime = 0L
     private var lastLocation: LocationItem? = null
+    private val weatherFreshnessMs = 15 * 60000L
 
     private val lastLocationKey = stringPreferencesKey("last_location")
     private val searchedLocationKey = stringPreferencesKey("searched_location")
@@ -151,7 +153,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             val prefs = applicationContext.dataStore.data.firstOrNull()
             if (prefs == null) {
                 addLog("Preferences unavailable, defaulting to New York")
-                onLocationSelected(defaultLocation, isManualSearch = false)
+                lastLocation = defaultLocation
+                _uiState.update { it.copy(selectedLocation = defaultLocation) }
+                saveLastLocation(defaultLocation)
+                prefetchWeatherOnStartup(listOf(defaultLocation))
                 return@launch
             }
 
@@ -180,7 +185,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     blurStrength = prefs[blurStrengthKey] ?: 6f,
                     tintAlpha = prefs[tintAlphaKey] ?: 0.1f,
                     textAlpha = prefs[textAlphaKey] ?: 0.8f,
-                    sheetBlurStrength = prefs[sheetBlurKey] ?: 30f,
+                    sheetBlurStrength = prefs[sheetBlurKey] ?: 16f,
                     sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
                     searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
                     obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
@@ -201,9 +206,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     val location = json.decodeFromString<LocationItem>(jsonStr)
                     lastLocation = location
                     _uiState.update { it.copy(selectedLocation = location) }
-                    if (!_uiState.value.isFollowMode) {
-                        fetchWeather(location)
-                    }
                 } catch (e: Exception) {
                     addLog("Load failed: ${e.message}")
                 }
@@ -211,9 +213,43 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
             if (_uiState.value.selectedLocation == null) {
                 addLog("No saved location found, defaulting to New York")
-                onLocationSelected(defaultLocation, isManualSearch = false)
+                lastLocation = defaultLocation
+                _uiState.update { it.copy(selectedLocation = defaultLocation) }
+                saveLastLocation(defaultLocation)
             }
-            
+
+            val startupLocations = buildList {
+                addAll(favs)
+                searched?.let { add(it) }
+                live?.let { add(it) }
+                _uiState.value.selectedLocation?.let { add(it) }
+            }
+            prefetchWeatherOnStartup(startupLocations)
+        }
+    }
+
+    private fun prefetchWeatherOnStartup(locations: List<LocationItem>) {
+        val uniqueLocations = locations.distinctBy { "${it.lat},${it.lon}" }
+        if (uniqueLocations.isEmpty()) return
+
+        startupPrefetchJob?.cancel()
+        startupPrefetchJob = viewModelScope.launch {
+            addLog("Startup weather prefetch: ${uniqueLocations.size} location(s)")
+            uniqueLocations.forEach { location ->
+                val key = "${location.lat},${location.lon}"
+                val lastUpdate = _uiState.value.updateTimeMap[key] ?: 0L
+                val hasFreshData = _uiState.value.weatherMap[key] != null &&
+                    (System.currentTimeMillis() - lastUpdate <= weatherFreshnessMs)
+                if (hasFreshData) return@forEach
+
+                fetchAndStoreWeather(
+                    location = location,
+                    showLoading = false,
+                    animateResponse = false,
+                    bypassFollowModeGuard = true
+                )
+                delay(150)
+            }
         }
     }
 
@@ -248,7 +284,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 delay(5000)
                 val now = System.currentTimeMillis()
                 val selectedLoc = _uiState.value.selectedLocation
-                val staleThreshold = 15 * 60000L // 15 minutes
+                val staleThreshold = weatherFreshnessMs
                 val stalenessError = "Weather data is more than 15 minutes old"
 
                 if (selectedLoc != null) {
@@ -356,7 +392,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val defaultBlur = 6f
         val defaultTint = 0.1f
         val defaultTextAlpha = 0.8f
-        val defaultSheetBlur = 30f
+        val defaultSheetBlur = 16f
         val defaultSheetDistortion = 0.2f
         val defaultSearchBarTint = 0.15f
 
@@ -758,29 +794,12 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun fetchWeather(location: LocationItem, force: Boolean = false) {
-        if (_uiState.value.isFollowMode && !_uiState.value.locationFound && location == _uiState.value.selectedLocation && _uiState.value.lastLiveLocation == null) {
-            return 
-        }
-        
         val now = System.currentTimeMillis()
         val key = "${location.lat},${location.lon}"
-        
-        // Use obfuscated coordinates for the request
-        val calendar = Calendar.getInstance()
-        val seedStr = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.DAY_OF_YEAR)}"
-        val seed = seedStr.hashCode().toLong()
-        
-        val obfuscated = obfuscateLocation(
-            location.lat, 
-            location.lon, 
-            _uiState.value.obfuscationMode, 
-            _uiState.value.gridKm.toDouble(),
-            seed = seed
-        )
-        
         val isFetchTooRecent = now - lastFetchTime < 2000
         val lastUpdate = _uiState.value.updateTimeMap[key] ?: 0L
-        val isDataFresh = _uiState.value.weatherMap[key] != null && (now - lastUpdate <= 15 * 60000L) // 15 minutes
+        val hasCachedData = _uiState.value.weatherMap[key] != null
+        val isDataFresh = hasCachedData && (now - lastUpdate <= weatherFreshnessMs)
         
         if (!force && isDataFresh && isFetchTooRecent) {
             addLog("Skipping fetch for ${location.name}, data is fresh or fetch too recent.")
@@ -788,32 +807,79 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
         
         lastFetchTime = now
-        _uiState.update { it.copy(isLoading = true) }
-        
+
         weatherJob?.cancel()
+        _uiState.update { it.copy(isLoading = false) }
         weatherJob = viewModelScope.launch {
-            addLog("Requesting weather from OpenMeteo: Lat=${obfuscated.latObf}, Lon=${obfuscated.lonObf} (Original: ${location.lat}, ${location.lon}, Mode: ${_uiState.value.obfuscationMode})")
-            try {
-                val weather = openMeteoService.getWeather(obfuscated.latObf, obfuscated.lonObf)
-                _uiState.update { it.copy(
-                    weatherMap = it.weatherMap + (key to weather),
-                    updateTimeMap = it.updateTimeMap + (key to System.currentTimeMillis()),
-                    isLoading = false,
-                    pageStatuses = it.pageStatuses + (key to true),
-                    lastResponseCoords = obfuscated.latObf to obfuscated.lonObf,
-                    responseAnimTrigger = System.currentTimeMillis()
-                ) }
-                _uiState.update { state ->
-                    state.copy(errors = state.errors.filter { it != "Weather data is more than 15 minutes old" })
-                }
-                addLog("Weather successfully updated for ${location.name}. Wind Dir: ${weather.currentWeather?.windDirection}")
-            } catch (e: Exception) {
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    pageStatuses = it.pageStatuses + (key to false)
-                ) }
-                addLog("Weather fetch FAILED for ${location.name}: ${e.message}")
+            fetchAndStoreWeather(
+                location = location,
+                showLoading = !hasCachedData,
+                animateResponse = true,
+                bypassFollowModeGuard = false
+            )
+        }
+    }
+
+    private suspend fun fetchAndStoreWeather(
+        location: LocationItem,
+        showLoading: Boolean,
+        animateResponse: Boolean,
+        bypassFollowModeGuard: Boolean
+    ): Boolean {
+        if (!bypassFollowModeGuard &&
+            _uiState.value.isFollowMode &&
+            !_uiState.value.locationFound &&
+            location == _uiState.value.selectedLocation &&
+            _uiState.value.lastLiveLocation == null
+        ) {
+            return false
+        }
+
+        val key = "${location.lat},${location.lon}"
+
+        val calendar = Calendar.getInstance()
+        val seedStr = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.DAY_OF_YEAR)}"
+        val seed = seedStr.hashCode().toLong()
+
+        val obfuscated = obfuscateLocation(
+            location.lat,
+            location.lon,
+            _uiState.value.obfuscationMode,
+            _uiState.value.gridKm.toDouble(),
+            seed = seed
+        )
+
+        if (showLoading) {
+            _uiState.update { it.copy(isLoading = true) }
+        }
+
+        addLog("Requesting weather from OpenMeteo: Lat=${obfuscated.latObf}, Lon=${obfuscated.lonObf} (Original: ${location.lat}, ${location.lon}, Mode: ${_uiState.value.obfuscationMode})")
+        return try {
+            val weather = openMeteoService.getWeather(obfuscated.latObf, obfuscated.lonObf)
+            _uiState.update { state ->
+                state.copy(
+                    weatherMap = state.weatherMap + (key to weather),
+                    updateTimeMap = state.updateTimeMap + (key to System.currentTimeMillis()),
+                    isLoading = if (showLoading) false else state.isLoading,
+                    pageStatuses = state.pageStatuses + (key to true),
+                    lastResponseCoords = if (animateResponse) obfuscated.latObf to obfuscated.lonObf else state.lastResponseCoords,
+                    responseAnimTrigger = if (animateResponse) System.currentTimeMillis() else state.responseAnimTrigger
+                )
             }
+            _uiState.update { state ->
+                state.copy(errors = state.errors.filter { it != "Weather data is more than 15 minutes old" })
+            }
+            addLog("Weather successfully updated for ${location.name}. Wind Dir: ${weather.currentWeather?.windDirection}")
+            true
+        } catch (e: Exception) {
+            _uiState.update { state ->
+                state.copy(
+                    isLoading = if (showLoading) false else state.isLoading,
+                    pageStatuses = state.pageStatuses + (key to false)
+                )
+            }
+            addLog("Weather fetch FAILED for ${location.name}: ${e.message}")
+            false
         }
     }
 

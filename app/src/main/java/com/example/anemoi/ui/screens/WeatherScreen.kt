@@ -225,7 +225,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
 
         val currentOffset = if (anchoredDraggableState.offset.isNaN()) collapsedAnchor else anchoredDraggableState.offset
         val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
-        val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 30f
+        val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
         val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
 
         Box(modifier = Modifier

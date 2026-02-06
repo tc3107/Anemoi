@@ -68,6 +68,9 @@ fun MapBackground(
     var previousBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
     var isInitialLoad by remember { mutableStateOf(true) }
+    val currentObfuscationMode by rememberUpdatedState(obfuscationMode)
+    val currentGridKm by rememberUpdatedState(gridKm)
+    val currentLastResponseCoords by rememberUpdatedState(lastResponseCoords)
     
     val snapshotAlpha by animateFloatAsState(
         targetValue = if (showSnapshot) 1f else 0f,
@@ -77,7 +80,7 @@ fun MapBackground(
     
     val extraBlur by animateFloatAsState(
         targetValue = blurTarget,
-        animationSpec = tween(durationMillis = 500),
+        animationSpec = tween(durationMillis = 220),
         label = "extraBlur"
     )
 
@@ -94,6 +97,14 @@ fun MapBackground(
 
     // Sequential Transition Logic: Snapshot/Blur In -> Move Hidden -> Wait for Tiles -> Snapshot Out -> Blur Out
     LaunchedEffect(lat, lon) {
+        if (isInitialLoad) {
+            // Avoid expensive startup transition effects on first render.
+            blurTarget = 0f
+            showSnapshot = false
+            isInitialLoad = false
+            return@LaunchedEffect
+        }
+
         val currentView = mapViewInstance
         
         // 1. Snapshot of map is taken and overlaid to keep background the same.
@@ -110,19 +121,19 @@ fun MapBackground(
             }
         }
         
-        // 2. Intense blur is applied to indicate transition.
-        blurTarget = 80f
-        delay(600) // Wait for blur and snapshot fade-in animations
+        // 2. Apply a short, light blur to smooth transitions without large frame cost.
+        blurTarget = 14f
+        delay(220)
         
         // 3. The new map location is loaded (not in view)
         appliedLat = lat
         appliedLon = lon
         
         // 4. Actively check if tiles are fully loaded (visible ones, at least) and new map rendered.
-        delay(400) // Grace period for map to start requesting tiles
+        delay(180) // Grace period for map to start requesting tiles
         var ready = false
         var attempts = 0
-        while (!ready && attempts < 40) { // Max 8 seconds
+        while (!ready && attempts < 20) { // Max ~4 seconds
             val tilesOverlay = mapViewInstance?.overlayManager?.tilesOverlay
             if (tilesOverlay != null) {
                 // Parsing TileStates string as properties are often private in certain OSMDroid builds
@@ -145,15 +156,14 @@ fun MapBackground(
                 attempts++
             }
         }
-        delay(400) // Extra time for the final rendering cycle to complete
+        delay(120) // Extra time for the final rendering cycle to complete
         
         // 5. The snapshot image is removed, revealing the new map image.
         showSnapshot = false
-        delay(500) // Wait for snapshot fade-out
+        delay(220)
         
         // 6. The blur is removed, resuming regular clarity.
         blurTarget = 0f
-        isInitialLoad = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -201,6 +211,94 @@ fun MapBackground(
                                 return false
                             }
                         })
+
+                        overlays.add(object : Overlay() {
+                            private val linePaint = Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                isAntiAlias = true
+                                strokeWidth = 3f
+                                style = Paint.Style.STROKE
+                            }
+
+                            override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+                                if (shadow || isMapMoving || mapView.isAnimating || currentObfuscationMode != ObfuscationMode.GRID) return
+
+                                val progress = responseProgress.value
+                                val factor = if (progress > 0f && progress < 1f) sin(progress * PI.toFloat()) else 0f
+
+                                linePaint.alpha = (factor * 150).toInt()
+                                if (linePaint.alpha <= 0) return
+
+                                val projection = mapView.projection
+                                val bounds = projection.boundingBox
+                                val degreesPerKmLat = 1.0 / 110.574
+                                val deltaLatDeg = currentGridKm * degreesPerKmLat
+                                val latRad = appliedLat * PI / 180.0
+                                val cosLat = max(abs(cos(latRad)), 0.1)
+                                val degreesPerKmLon = 1.0 / (111.320 * cosLat)
+                                val deltaLonDeg = currentGridKm * degreesPerKmLon
+                                val originLat = -90.0
+                                val originLon = -180.0
+
+                                val startI = floor((bounds.latSouth - originLat) / deltaLatDeg).toInt()
+                                val endI = ceil((bounds.latNorth - originLat) / deltaLatDeg).toInt()
+                                val startJ = floor((bounds.lonWest - originLon) / deltaLonDeg).toInt()
+                                val endJ = ceil((bounds.lonEast - originLon) / deltaLonDeg).toInt()
+
+                                val p1 = Point()
+                                val p2 = Point()
+                                for (i in startI..endI) {
+                                    val l = originLat + i * deltaLatDeg
+                                    projection.toPixels(GeoPoint(l, bounds.lonWest), p1)
+                                    projection.toPixels(GeoPoint(l, bounds.lonEast), p2)
+                                    canvas.drawLine(p1.x.toFloat(), p1.y.toFloat(), p2.x.toFloat(), p2.y.toFloat(), linePaint)
+                                }
+                                for (j in startJ..endJ) {
+                                    val l = originLon + j * deltaLonDeg
+                                    projection.toPixels(GeoPoint(bounds.latSouth, l), p1)
+                                    projection.toPixels(GeoPoint(bounds.latNorth, l), p2)
+                                    canvas.drawLine(p1.x.toFloat(), p1.y.toFloat(), p2.x.toFloat(), p2.y.toFloat(), linePaint)
+                                }
+                            }
+                        })
+
+                        overlays.add(object : Overlay() {
+                            private val blipPaint = Paint().apply {
+                                color = "#A5D6A7".toColorInt()
+                                isAntiAlias = true
+                                style = Paint.Style.FILL
+                            }
+
+                            override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+                                if (shadow) return
+                                val coords = currentLastResponseCoords ?: return
+
+                                val progress = responseProgress.value
+                                if (progress <= 0f || progress >= 1f) return
+
+                                val (bLat, bLon) = coords
+                                val center = Point()
+                                mapView.projection.toPixels(GeoPoint(bLat, bLon), center)
+
+                                val p1 = (progress / 0.6f).coerceIn(0f, 1f)
+                                if (p1 > 0 && p1 < 1f) {
+                                    val alpha = (255 * (1f - p1)).toInt()
+                                    val radius = 102f * p1
+                                    blipPaint.alpha = alpha
+                                    canvas.drawCircle(center.x.toFloat(), center.y.toFloat(), radius, blipPaint)
+                                }
+
+                                val start2 = 0.3f
+                                val end2 = 0.9f
+                                val p2 = ((progress - start2) / (end2 - start2)).coerceIn(0f, 1f)
+                                if (p2 > 0 && p2 < 1f) {
+                                    val alpha = (255 * (1f - p2)).toInt()
+                                    val radius = 127.5f * p2
+                                    blipPaint.alpha = alpha
+                                    canvas.drawCircle(center.x.toFloat(), center.y.toFloat(), radius, blipPaint)
+                                }
+                            }
+                        })
                         mapViewInstance = this
                     }
                 },
@@ -218,102 +316,14 @@ fun MapBackground(
                         isMapMoving = false
                     }
                     
-                    view.overlays.clear()
-                    
-                    if (obfuscationMode == ObfuscationMode.GRID) {
-                        view.overlays.add(object : Overlay() {
-                            private val linePaint = Paint().apply {
-                                color = android.graphics.Color.WHITE
-                                isAntiAlias = true
-                                strokeWidth = 3f
-                                style = Paint.Style.STROKE
-                            }
-
-                            override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
-                                if (shadow || isMapMoving || mapView.isAnimating) return
-                                
-                                val progress = responseProgress.value
-                                val factor = if (progress > 0f && progress < 1f) {
-                                    sin(progress * PI.toFloat())
-                                } else 0f
-                                
-                                linePaint.alpha = (factor * 150).toInt()
-                                if (linePaint.alpha <= 0) return
-
-                                val projection = mapView.projection
-                                val bounds = projection.boundingBox
-                                val degreesPerKmLat = 1.0 / 110.574
-                                val deltaLatDeg = gridKm * degreesPerKmLat
-                                val latRad = appliedLat * PI / 180.0
-                                val cosLat = max(abs(cos(latRad)), 0.1)
-                                val degreesPerKmLon = 1.0 / (111.320 * cosLat)
-                                val deltaLonDeg = gridKm * degreesPerKmLon
-                                val originLat = -90.0
-                                val originLon = -180.0
-                                
-                                val startI = floor((bounds.latSouth - originLat) / deltaLatDeg).toInt()
-                                val endI = ceil((bounds.latNorth - originLat) / deltaLatDeg).toInt()
-                                val startJ = floor((bounds.lonWest - originLon) / deltaLonDeg).toInt()
-                                val endJ = ceil((bounds.lonEast - originLon) / deltaLonDeg).toInt()
-                                
-                                val p1 = Point(); val p2 = Point()
-                                for (i in startI..endI) {
-                                    val l = originLat + i * deltaLatDeg
-                                    projection.toPixels(GeoPoint(l, bounds.lonWest), p1)
-                                    projection.toPixels(GeoPoint(l, bounds.lonEast), p2)
-                                    canvas.drawLine(p1.x.toFloat(), p1.y.toFloat(), p2.x.toFloat(), p2.y.toFloat(), linePaint)
-                                }
-                                for (j in startJ..endJ) {
-                                    val l = originLon + j * deltaLonDeg
-                                    projection.toPixels(GeoPoint(bounds.latSouth, l), p1)
-                                    projection.toPixels(GeoPoint(bounds.latNorth, l), p2)
-                                    canvas.drawLine(p1.x.toFloat(), p1.y.toFloat(), p2.x.toFloat(), p2.y.toFloat(), linePaint)
-                                }
-                            }
-                        })
-                    }
-                    
-                    lastResponseCoords?.let { (bLat, bLon) ->
-                        val progress = responseProgress.value
-                        if (progress > 0f && progress < 1f) {
-                            view.overlays.add(object : Overlay() {
-                                private val blipPaint = Paint().apply {
-                                    color = "#A5D6A7".toColorInt()
-                                    isAntiAlias = true
-                                    style = Paint.Style.FILL
-                                }
-
-                                override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
-                                    if (shadow) return
-                                    val center = Point()
-                                    mapView.projection.toPixels(GeoPoint(bLat, bLon), center)
-                                    
-                                    val p1 = (progress / 0.6f).coerceIn(0f, 1f)
-                                    if (p1 > 0 && p1 < 1f) {
-                                        val alpha = (255 * (1f - p1)).toInt()
-                                        val radius = 102f * p1
-                                        blipPaint.alpha = alpha
-                                        canvas.drawCircle(center.x.toFloat(), center.y.toFloat(), radius, blipPaint)
-                                    }
-
-                                    val start2 = 0.3f
-                                    val end2 = 0.9f
-                                    val p2 = ((progress - start2) / (end2 - start2)).coerceIn(0f, 1f)
-                                    if (p2 > 0 && p2 < 1f) {
-                                        val alpha = (255 * (1f - p2)).toInt()
-                                        val radius = 127.5f * p2
-                                        blipPaint.alpha = alpha
-                                        canvas.drawCircle(center.x.toFloat(), center.y.toFloat(), radius, blipPaint)
-                                    }
-                                }
-                            })
-                        }
-                    }
-                    
                     if (!view.isAnimating) {
                         isMapMoving = false
                     }
-                    view.invalidate()
+
+                    val isResponseAnimating = responseProgress.value > 0f && responseProgress.value < 1f
+                    if (isResponseAnimating || view.isAnimating || isMapMoving || showSnapshot) {
+                        view.postInvalidateOnAnimation()
+                    }
                 }
             )
 

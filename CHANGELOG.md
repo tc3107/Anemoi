@@ -12,6 +12,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added a default fallback location (`New York`) when no saved location is available.
 - Removed the floating `mm` value readout from the precipitation graph HUD while keeping percentage and time indicators.
 - Updated location mode behavior to request location permission when the user enters location mode without access.
+- Optimized map rendering performance by reducing transition blur cost, avoiding overlay rebuild churn, and limiting redraw invalidation to active animation states.
+- Reduced default sheet blur strength to improve UI smoothness on lower-end devices.
+- Added startup weather prefetch for all known locations and switched to cached-first location changes with background weather refresh updates.
 
 ## [0.1.0] - 2026-02-06
 

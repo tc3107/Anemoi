@@ -29,7 +29,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     
-    val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 30f
+    val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
 
     Box(
