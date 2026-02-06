@@ -15,6 +15,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Optimized map rendering performance by reducing transition blur cost, avoiding overlay rebuild churn, and limiting redraw invalidation to active animation states.
 - Reduced default sheet blur strength to improve UI smoothness on lower-end devices.
 - Added startup weather prefetch for all known locations and switched to cached-first location changes with background weather refresh updates.
+- Capped UV index dial indicator movement so min/max positions stay fully within gauge bounds.
+- Adjusted primary value vertical alignment on temperature and precipitation line graphs.
+- Standardized hourly weather condition icon rendering to a light gray tint.
 
 ## [0.1.0] - 2026-02-06
 

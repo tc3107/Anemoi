@@ -197,13 +197,11 @@ fun TemperatureGraph(
 
                         val readingLabel = "${interpolatedTemp.roundToInt()}°"
                         val readingLayout = textMeasurer.measure(readingLabel, TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold))
-                        // Reverted to -32dp
-                        drawText(readingLayout, topLeft = Offset(w - readingLayout.size.width - 16.dp.toPx(), -32.dp.toPx()))
+                        drawText(readingLayout, topLeft = Offset(w - readingLayout.size.width - 16.dp.toPx(), -28.dp.toPx()))
                         
                         val hr = (fraction * 24).toInt() % 24
                         val min = ((fraction * 24 - hr) * 60).toInt()
                         val timeLayout = textMeasurer.measure(String.format("%02d:%02d", hr, min), TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp))
-                        // Lowered to -4dp
                         drawText(timeLayout, topLeft = Offset(w - timeLayout.size.width - 16.dp.toPx(), -4.dp.toPx()))
                     }
                 }

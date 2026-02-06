@@ -104,9 +104,12 @@ fun UVIndexWidget(
 
             // 3. Current Value Highlight and Arrow
             if (currentUV != null) {
+                val maxUv = 11f
                 val sectionSweep = totalSweep / 11f
-                // Position based on float value for precise movement
-                val centerAngle = startAngle + (uvValue.toFloat() * sectionSweep).coerceIn(0f, totalSweep)
+                val indicatorRangeStart = startAngle + (sectionSweep / 2f)
+                val indicatorRangeSweep = totalSweep - sectionSweep
+                val normalizedUv = (uvValue.toFloat() / maxUv).coerceIn(0f, 1f)
+                val centerAngle = indicatorRangeStart + normalizedUv * indicatorRangeSweep
                 val sectionStartAngle = centerAngle - (sectionSweep / 2f)
 
                 // Helper to draw the highlight with side blur

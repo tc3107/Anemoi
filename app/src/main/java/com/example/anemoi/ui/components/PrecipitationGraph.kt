@@ -205,7 +205,7 @@ fun PrecipitationGraph(
                         val xOffset = w - 16.dp.toPx()
                         
                         // Vertical positions
-                        val probY = -32.dp.toPx()
+                        val probY = -28.dp.toPx()
                         val clockY = -4.dp.toPx()
                         
                         drawText(probLayout, topLeft = Offset(xOffset - probLayout.size.width, probY))

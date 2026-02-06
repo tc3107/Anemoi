@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -178,7 +179,8 @@ fun HourlyForecastWidget(
                                         Image(
                                             painter = painterResource(id = iconResId),
                                             contentDescription = null,
-                                            modifier = Modifier.fillMaxSize()
+                                            modifier = Modifier.fillMaxSize(),
+                                            colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
                                         )
                                     } else {
                                         FallbackCircle()
