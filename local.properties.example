@@ -1,4 +1,0 @@
-## Copy this file to local.properties and set your local Android SDK path.
-## This file should not be committed.
-
-sdk.dir=/path/to/Android/Sdk
