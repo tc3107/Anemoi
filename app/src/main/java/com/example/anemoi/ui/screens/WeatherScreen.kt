@@ -65,8 +65,11 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val haptic = LocalHapticFeedback.current
     
     val favorites = uiState.favorites
-    val searchedLocation = remember(uiState.searchedLocation, favorites) {
-        uiState.searchedLocation?.takeIf { loc -> favorites.none { it.name == loc.name } }
+    val searchedLocation = remember(uiState.searchedLocation, uiState.selectedLocation, uiState.isFollowMode, favorites) {
+        val persistedSearched = uiState.searchedLocation?.takeIf { loc -> favorites.none { it.name == loc.name } }
+        persistedSearched ?: uiState.selectedLocation?.takeIf { selected ->
+            !uiState.isFollowMode && favorites.none { it.name == selected.name }
+        }
     }
     
     val totalPages = 1 + favorites.size + (if (searchedLocation != null) 1 else 0)
