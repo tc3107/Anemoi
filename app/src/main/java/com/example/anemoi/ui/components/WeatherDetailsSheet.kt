@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,7 @@ fun WeatherDetailsSheet(
     isExpanded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val widgetGap = 20.dp
         val horizontalPadding = 24.dp
@@ -38,7 +41,10 @@ fun WeatherDetailsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(handleHeight)
-                    .clickable { onHandleClick() },
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onHandleClick()
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Box(

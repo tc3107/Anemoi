@@ -13,9 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +33,7 @@ fun SegmentedSelector(
 ) {
     var componentWidth by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
 
     val outerPadding = 8.dp
@@ -91,6 +94,7 @@ fun SegmentedSelector(
                     val index = ((offset.x - outerPaddingPx) / (itemWidthPx + internalSpacingPx))
                         .toInt()
                         .coerceIn(0, options.size - 1)
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onOptionSelected(index)
                 }
             }

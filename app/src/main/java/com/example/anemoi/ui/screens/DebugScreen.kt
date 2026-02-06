@@ -13,7 +13,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +26,7 @@ import com.example.anemoi.viewmodel.WeatherViewModel
 @Composable
 fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val debugLogs by viewModel.debugLogs.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
@@ -32,7 +35,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
             TopAppBar(
                 title = { Text("Settings & Debug") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -79,7 +85,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = uiState.tempUnit == unit,
-                                onClick = { viewModel.setTempUnit(unit) }
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.setTempUnit(unit)
+                                }
                             )
                             Text(unit.name.lowercase().replaceFirstChar { it.uppercase() })
                         }
@@ -95,7 +104,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                     Text("Custom Visual Values", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
                     Switch(
                         checked = uiState.customValuesEnabled,
-                        onCheckedChange = { viewModel.toggleCustomValues(it) }
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.toggleCustomValues(it)
+                        }
                     )
                 }
                 
@@ -170,7 +182,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
 
             item {
                 Button(
-                    onClick = { viewModel.testNetwork(context) },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.testNetwork(context)
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Test Network Connection")
@@ -179,7 +194,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Button(
-                    onClick = { viewModel.checkPermissions(context) },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.checkPermissions(context)
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Check Permissions")
@@ -188,7 +206,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Button(
-                    onClick = { viewModel.testApiConnections() },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.testApiConnections()
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Test API Connections")
@@ -197,7 +218,10 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
-                    onClick = { viewModel.getCurrentLocation(context) },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.getCurrentLocation(context)
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Debug: Find Current Location")

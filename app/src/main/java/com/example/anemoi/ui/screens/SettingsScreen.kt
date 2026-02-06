@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +30,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
+    val haptic = LocalHapticFeedback.current
     
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
@@ -200,7 +203,10 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                             }
                             Switch(
                                 checked = uiState.experimentalEnabled,
-                                onCheckedChange = viewModel::setExperimentalEnabled,
+                                onCheckedChange = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.setExperimentalEnabled(it)
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = Color.White.copy(alpha = 0.4f),
@@ -228,7 +234,10 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                 }
 
                 Button(
-                    onClick = onBack,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBack()
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp),

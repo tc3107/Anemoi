@@ -20,9 +20,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,8 @@ fun SearchBar(
     val isFocused by interactionSource.collectIsFocusedAsState()
     var expanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
+    var wasSearchFieldFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(isFocused, query) {
         if (isFocused || query.isNotEmpty()) {
@@ -111,7 +116,10 @@ fun SearchBar(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onMenuClick) {
+                IconButton(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onMenuClick()
+                }) {
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "Menu",
@@ -124,7 +132,13 @@ fun SearchBar(
                     onValueChange = { onQueryChange(it) },
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
+                        .fillMaxHeight()
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused && !wasSearchFieldFocused) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            wasSearchFieldFocused = focusState.isFocused
+                        },
                     interactionSource = interactionSource,
                     singleLine = true,
                     cursorBrush = SolidColor(Color.White),
@@ -151,7 +165,10 @@ fun SearchBar(
                     }
                 )
 
-                IconButton(onClick = onSettingsClick) {
+                IconButton(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSettingsClick()
+                }) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
@@ -183,13 +200,17 @@ fun SearchBar(
                                         placementSpec = tween(300)
                                     )
                                     .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onLocationSelected(location)
                                         focusManager.clearFocus()
                                     }
                                     .padding(vertical = 4.dp, horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(onClick = { onToggleFavorite(location) }) {
+                                IconButton(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggleFavorite(location)
+                                }) {
                                     Icon(
                                         imageVector = if (location.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                                         contentDescription = "Favorite",
