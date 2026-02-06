@@ -1,0 +1,470 @@
+package com.example.anemoi.ui.screens
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
+import com.example.anemoi.ui.components.MapBackground
+import com.example.anemoi.ui.components.SearchBar
+import com.example.anemoi.ui.components.WeatherDetailsSheet
+import com.example.anemoi.ui.components.WeatherDisplay
+import com.example.anemoi.viewmodel.WeatherViewModel
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+enum class SheetValue { Collapsed, Expanded }
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun WeatherScreen(viewModel: WeatherViewModel) {
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    
+    val favorites = uiState.favorites
+    val searchedLocation = remember(uiState.searchedLocation, favorites) {
+        uiState.searchedLocation?.takeIf { loc -> favorites.none { it.name == loc.name } }
+    }
+    
+    val totalPages = 1 + favorites.size + (if (searchedLocation != null) 1 else 0)
+    val pagerState = rememberPagerState(pageCount = { totalPages })
+
+    val targetPage = remember(uiState.selectedLocation, uiState.isFollowMode, favorites, searchedLocation) {
+        if (uiState.isFollowMode) 0
+        else {
+            val favIndex = favorites.indexOfFirst { it.name == uiState.selectedLocation?.name }
+            if (favIndex != -1) favIndex + 1
+            else if (searchedLocation != null && uiState.selectedLocation?.name == searchedLocation.name) favorites.size + 1
+            else 0
+        }
+    }
+
+    var isReady by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.selectedLocation) {
+        if (!isReady && uiState.selectedLocation != null) {
+            pagerState.scrollToPage(targetPage)
+            isReady = true
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (!isReady) return@LaunchedEffect
+        if (pagerState.currentPage != targetPage) {
+            viewModel.clearStatuses()
+            if (pagerState.currentPage == 0) {
+                if (!uiState.isFollowMode) {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.setFollowMode(true, context)
+                    }
+                }
+            } else {
+                if (uiState.isFollowMode) {
+                    viewModel.setFollowMode(false, context)
+                }
+                val location = if (pagerState.currentPage <= favorites.size) {
+                    favorites.getOrNull(pagerState.currentPage - 1)
+                } else {
+                    searchedLocation
+                }
+                
+                if (location != null) {
+                    viewModel.onLocationSelected(location, isManualSearch = false)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(targetPage) {
+        if (isReady && pagerState.currentPage != targetPage) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val sheetMaxHeight = maxHeight
+        val fullHeightPx = constraints.maxHeight.toFloat()
+        val handleHeight = 72.dp
+        val handleHeightPx = with(density) { handleHeight.toPx() }
+        val collapsedAnchor = fullHeightPx - handleHeightPx
+        val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val expandedAnchor = with(density) { (topPadding + 88.dp).toPx() }
+
+        val decayAnimationSpec = rememberSplineBasedDecay<Float>()
+        val anchoredDraggableState = remember(collapsedAnchor, expandedAnchor, decayAnimationSpec) {
+            AnchoredDraggableState(
+                initialValue = SheetValue.Collapsed,
+                anchors = DraggableAnchors {
+                    SheetValue.Collapsed at collapsedAnchor
+                    SheetValue.Expanded at expandedAnchor
+                },
+                positionalThreshold = { distance: Float -> distance * 0.5f },
+                velocityThreshold = { with(density) { 100.dp.toPx() } },
+                snapAnimationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessLow
+                ),
+                decayAnimationSpec = decayAnimationSpec
+            )
+        }
+
+        val nestedScrollConnection = remember(anchoredDraggableState) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    val delta = available.y
+                    return if (delta < 0 && source == NestedScrollSource.UserInput) {
+                        val consumed = anchoredDraggableState.dispatchRawDelta(delta)
+                        Offset(0f, consumed)
+                    } else {
+                        Offset.Zero
+                    }
+                }
+
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource
+                ): Offset {
+                    val delta = available.y
+                    return if (source == NestedScrollSource.UserInput) {
+                        val consumedByDraggable = anchoredDraggableState.dispatchRawDelta(delta)
+                        Offset(0f, consumedByDraggable)
+                    } else {
+                        Offset.Zero
+                    }
+                }
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    val toFling = available.y
+                    return if (toFling < 0 && anchoredDraggableState.offset > anchoredDraggableState.anchors.minAnchor()) {
+                        anchoredDraggableState.settle(toFling)
+                        available
+                    } else {
+                        Velocity.Zero
+                    }
+                }
+
+                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                    anchoredDraggableState.settle(available.y)
+                    return available
+                }
+            }
+        }
+
+        BackHandler(enabled = uiState.isOrganizerMode || uiState.isSettingsOpen || anchoredDraggableState.currentValue == SheetValue.Expanded) {
+            if (uiState.isOrganizerMode) {
+                viewModel.toggleOrganizerMode(false)
+            } else if (uiState.isSettingsOpen) {
+                viewModel.toggleSettings(false)
+            } else {
+                coroutineScope.launch { anchoredDraggableState.animateTo(SheetValue.Collapsed) }
+            }
+        }
+
+        val permissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            if (permissions.entries.all { it.value }) {
+                if (pagerState.currentPage == 0) {
+                    viewModel.setFollowMode(true, context)
+                } else {
+                    viewModel.getCurrentLocation(context)
+                }
+            }
+        }
+
+        val currentOffset = if (anchoredDraggableState.offset.isNaN()) collapsedAnchor else anchoredDraggableState.offset
+        val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
+        val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 30f
+        val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
+
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { 
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleOrganizerMode(true) 
+                }
+            )
+        ) {
+            uiState.selectedLocation?.let { location ->
+                MapBackground(
+                    lat = location.lat,
+                    lon = location.lon,
+                    zoom = if (uiState.customValuesEnabled) uiState.mapZoom else 16f,
+                    blurStrength = if (uiState.customValuesEnabled) uiState.blurStrength else 6f,
+                    tintAlpha = if (uiState.customValuesEnabled) uiState.tintAlpha else 0.1f,
+                    obfuscationMode = uiState.obfuscationMode,
+                    gridKm = uiState.gridKm.toDouble(),
+                    lastResponseCoords = uiState.lastResponseCoords,
+                    responseAnimTrigger = uiState.responseAnimTrigger,
+                    shouldAnimate = !uiState.isLoading
+                )
+            }
+
+            AnimatedVisibility(
+                visible = !uiState.isOrganizerMode && !uiState.isSettingsOpen,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                clipRect(bottom = currentOffset) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 80.dp)
+                                .align(Alignment.BottomCenter),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val isLocActive = pagerState.currentPage == 0
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (uiState.locationFound && isLocActive) Color.Green 
+                                       else if (isLocActive) Color.White 
+                                       else Color.White.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            repeat(favorites.size) { index ->
+                                val location = favorites[index]
+                                val key = "${location.lat},${location.lon}"
+                                val status = uiState.pageStatuses[key]
+                                val isActive = pagerState.currentPage == index + 1
+                                val dotColor = when (status) {
+                                    true -> if (isActive) Color.Green else Color.White.copy(alpha = 0.5f)
+                                    false -> if (isActive) Color.Red else Color.White.copy(alpha = 0.5f)
+                                    null -> if (isActive) Color.White else Color.White.copy(alpha = 0.5f)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(dotColor)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+
+                            if (searchedLocation != null) {
+                                val isActive = pagerState.currentPage == totalPages - 1
+                                val key = "${searchedLocation.lat},${searchedLocation.lon}"
+                                val status = uiState.pageStatuses[key]
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = when (status) {
+                                        true -> if (isActive) Color.Green else Color.White.copy(alpha = 0.5f)
+                                        false -> if (isActive) Color.Red else Color.White.copy(alpha = 0.5f)
+                                        null -> if (isActive) Color.White else Color.White.copy(alpha = 0.5f)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth().statusBarsPadding().zIndex(2f)) {
+                        if (uiState.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = Color.White, trackColor = Color.Transparent)
+                        if (uiState.isLocating) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = Color(0xFF4285F4), trackColor = Color.Transparent)
+                    }
+
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = anchoredDraggableState.currentValue == SheetValue.Collapsed
+                    ) { page ->
+                        val pageLocation = if (page == 0) {
+                            if (uiState.isFollowMode) uiState.selectedLocation else null
+                        } else if (page <= favorites.size) {
+                            favorites.getOrNull(page - 1)
+                        } else {
+                            searchedLocation
+                        }
+
+                        Box(modifier = Modifier.fillMaxSize().drawWithContent { clipRect(bottom = currentOffset) { this@drawWithContent.drawContent() } }) {
+                            Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
+                                Spacer(modifier = Modifier.height(152.dp))
+                                
+                                if (pageLocation != null) {
+                                    val key = "${pageLocation.lat},${pageLocation.lon}"
+                                    val weather = uiState.weatherMap[key]
+                                    val lastUpdate = uiState.updateTimeMap[key] ?: 0L
+                                    val isStale = lastUpdate != 0L && (System.currentTimeMillis() - lastUpdate > 60000)
+                                    val isCurrentActivePage = (page == pagerState.currentPage)
+                                    
+                                    WeatherDisplay(
+                                        weather = weather,
+                                        tempUnit = uiState.tempUnit,
+                                        isStale = isStale,
+                                        showDashesOverride = (page == 0 && !uiState.locationFound) || !isCurrentActivePage,
+                                        textAlpha = textAlpha
+                                    )
+                                } else {
+                                    WeatherDisplay(
+                                        weather = null,
+                                        tempUnit = uiState.tempUnit,
+                                        isStale = false,
+                                        showDashesOverride = true,
+                                        textAlpha = textAlpha
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp)) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        SearchBar(
+                            query = uiState.searchQuery,
+                            onQueryChange = viewModel::onSearchQueryChanged,
+                            suggestions = uiState.suggestions,
+                            favorites = favorites,
+                            onLocationSelected = viewModel::onLocationSelected,
+                            onSettingsClick = { viewModel.toggleSettings(true) },
+                            onMenuClick = { viewModel.toggleOrganizerMode(true) },
+                            onToggleFavorite = viewModel::toggleFavorite,
+                            selectedLocation = uiState.selectedLocation,
+                            isLocating = uiState.isLocating,
+                            isFollowMode = uiState.isFollowMode,
+                            hasErrors = uiState.errors.isNotEmpty(),
+                            tintAlpha = currentTintAlpha,
+                            blurStrength = currentBlurStrength,
+                            onLocateClick = {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.getCurrentLocation(context)
+                                } else {
+                                    permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                }
+                            },
+                            onLocateLongClick = {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.setFollowMode(!uiState.isFollowMode, context)
+                                } else {
+                                    permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                }
+                            }
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(sheetMaxHeight)
+                            .offset { IntOffset(0, currentOffset.roundToInt()) }
+                            .anchoredDraggable(anchoredDraggableState, Orientation.Vertical)
+                            .nestedScroll(nestedScrollConnection)
+                            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                            .zIndex(1f)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().blur(currentBlurStrength.dp).graphicsLayer {
+                            val distortion = if (uiState.customValuesEnabled) uiState.sheetDistortion else 0.3f
+                            scaleX = 1f + distortion * 0.4f; scaleY = 1f + distortion * 0.4f; translationY = distortion * 50f
+                        }.background(Color.White.copy(alpha = currentTintAlpha)))
+
+                        WeatherDetailsSheet(
+                            uiState = uiState,
+                            handleHeight = handleHeight,
+                            onHandleClick = {
+                                coroutineScope.launch { 
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    anchoredDraggableState.animateTo(
+                                        if (anchoredDraggableState.targetValue == SheetValue.Collapsed) SheetValue.Expanded 
+                                        else SheetValue.Collapsed
+                                    ) 
+                                }
+                            },
+                            isExpanded = anchoredDraggableState.targetValue == SheetValue.Expanded
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = uiState.isOrganizerMode,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                OrganizerOverlay(
+                    favorites = favorites,
+                    onReorder = viewModel::reorderFavorites,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onSelect = { location ->
+                        viewModel.onLocationSelected(location)
+                        viewModel.toggleOrganizerMode(false)
+                    },
+                    onClose = { viewModel.toggleOrganizerMode(false) },
+                    blurStrength = currentBlurStrength,
+                    tintAlpha = currentTintAlpha
+                )
+            }
+
+            AnimatedVisibility(
+                visible = uiState.isSettingsOpen,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                SettingsScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.toggleSettings(false) }
+                )
+            }
+        }
+    }
+}
