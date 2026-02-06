@@ -68,6 +68,7 @@ fun MapBackground(
     var previousBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
     var isInitialLoad by remember { mutableStateOf(true) }
+    var lastCenterTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val currentObfuscationMode by rememberUpdatedState(obfuscationMode)
     val currentGridKm by rememberUpdatedState(gridKm)
     val currentLastResponseCoords by rememberUpdatedState(lastResponseCoords)
@@ -305,14 +306,33 @@ fun MapBackground(
                 update = { view ->
                     view.controller.setZoom(zoom.toDouble())
                     
+                    val currentTarget = appliedLat to appliedLon
+                    val targetChanged = lastCenterTarget != currentTarget
+                    val center = view.mapCenter
+                    val centerMismatch = center == null ||
+                        abs(center.latitude - appliedLat) > 1e-5 ||
+                        abs(center.longitude - appliedLon) > 1e-5
+
                     // Use instant move if we are transitioning (covered by snapshot or heavy blur)
                     val isTransitioning = showSnapshot || blurTarget > 0f
                     if (isTransitioning) {
-                        view.controller.setCenter(appliedGeoPoint)
+                        if (targetChanged || centerMismatch || view.isAnimating) {
+                            view.controller.setCenter(appliedGeoPoint)
+                            lastCenterTarget = currentTarget
+                        }
                     } else if (shouldAnimate) {
-                        view.controller.animateTo(appliedGeoPoint)
+                        if (targetChanged) {
+                            view.controller.animateTo(appliedGeoPoint)
+                            lastCenterTarget = currentTarget
+                        } else if (!view.isAnimating && centerMismatch) {
+                            // Recovery path: never allow map center to remain between two locations.
+                            view.controller.setCenter(appliedGeoPoint)
+                        }
                     } else {
-                        view.controller.setCenter(appliedGeoPoint)
+                        if (targetChanged || centerMismatch || view.isAnimating) {
+                            view.controller.setCenter(appliedGeoPoint)
+                            lastCenterTarget = currentTarget
+                        }
                         isMapMoving = false
                     }
                     

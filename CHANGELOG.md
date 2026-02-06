@@ -24,6 +24,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Made search and pull-up sheet interactions mutually exclusive: expanding the sheet clears active search input, and starting a search collapses the sheet.
 - Smoothed search dropdown dismissal by preserving rendered suggestions until the close animation fully completes.
 - Fixed an intermittent search bar focus/keyboard race where tapping the field could immediately close the keyboard.
+- Fixed a location navigation edge case where visuals could appear between two locations by synchronizing page-driven selection to `settledPage` (post-snap) instead of transient `currentPage` updates during swipe motion.
+- Hardened map centering transitions by tracking the last center target and applying a recovery snap to exact coordinates when animation finishes but the map center is still offset, preventing persistent in-between map states.
 
 ## [0.1.0] - 2026-02-06
 

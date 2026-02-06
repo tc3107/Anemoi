@@ -92,6 +92,10 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             else 0
         }
     }
+    val latestTargetPage by rememberUpdatedState(targetPage)
+    val latestFavorites by rememberUpdatedState(favorites)
+    val latestSearchedLocation by rememberUpdatedState(searchedLocation)
+    val latestIsFollowMode by rememberUpdatedState(uiState.isFollowMode)
 
     var isReady by remember { mutableStateOf(false) }
 
@@ -114,38 +118,42 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
+    LaunchedEffect(pagerState, isReady) {
         if (!isReady) return@LaunchedEffect
-        if (pagerState.currentPage != targetPage) {
-            viewModel.clearStatuses()
-            if (pagerState.currentPage == 0) {
-                if (!uiState.isFollowMode) {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                        viewModel.setFollowMode(true, context)
-                    } else {
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { settledPage ->
+                if (settledPage == latestTargetPage) return@collect
+
+                viewModel.clearStatuses()
+                if (settledPage == 0) {
+                    if (!latestIsFollowMode) {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            viewModel.setFollowMode(true, context)
+                        } else {
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
                             )
-                        )
+                        }
+                    }
+                } else {
+                    if (latestIsFollowMode) {
+                        viewModel.setFollowMode(false, context)
+                    }
+                    val location = if (settledPage <= latestFavorites.size) {
+                        latestFavorites.getOrNull(settledPage - 1)
+                    } else {
+                        latestSearchedLocation
+                    }
+
+                    if (location != null) {
+                        viewModel.onLocationSelected(location, isManualSearch = false)
                     }
                 }
-            } else {
-                if (uiState.isFollowMode) {
-                    viewModel.setFollowMode(false, context)
-                }
-                val location = if (pagerState.currentPage <= favorites.size) {
-                    favorites.getOrNull(pagerState.currentPage - 1)
-                } else {
-                    searchedLocation
-                }
-                
-                if (location != null) {
-                    viewModel.onLocationSelected(location, isManualSearch = false)
-                }
             }
-        }
     }
 
     LaunchedEffect(targetPage) {
