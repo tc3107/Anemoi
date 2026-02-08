@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning once tagged releases begin.
 
+## [0.3.0] - 2026-02-08
+
+### Added
+
+- Added a full weather request policy module with pure logic for dataset freshness selection, request gating, backoff progression, and timestamp window pruning.
+- Added focused unit test coverage for request-policy behavior including threshold boundaries, rate limits, deterministic multi-gate blocking, and backoff resets/progression.
+- Added persisted cache signatures and active request signature tracking so cached weather is only reused when request semantics match.
+- Added in-flight request coalescing per location/signature/dataset set to prevent duplicate concurrent weather calls.
+- Added stale-age UX messaging with a `Last updated Xh Ym ago` indicator when displayed data is older than one hour.
+
+### Changed
+
+- Reworked weather fetching to be cache-first with per-dataset freshness thresholds (current 5m, hourly 20m, daily 2h) and selective dataset requests.
+- Replaced direct rate-limit checks with deterministic gate evaluation that combines backoff, per-location throttling (1/min), and global cap (30/min) and chooses the longest wait.
+- Updated automatic refresh cadence to 60 minutes in the background while preserving on-demand refresh from user interactions.
+- Updated weather API request wiring to allow nullable `current_weather`, `hourly`, and `daily` params so only required data blocks are requested.
+- Made weather cache usage signature-aware in both main weather surface and details sheet rendering.
+
+### Fixed
+
+- Fixed semantic cache reuse issues by invalidating stale signature-mismatched cache entries when request-relevant settings change.
+- Fixed potential duplicate network fetches from rapid repeated triggers by joining existing in-flight requests.
+- Fixed post-fetch cache durability risk by flushing cache persistence immediately after successful weather updates.
+- Improved failure diagnostics by logging retry context (requested datasets, request params, HTTP status, capped error-body snippet, and parse error details).
+
 ## [0.2.0]
 
 ### Changed

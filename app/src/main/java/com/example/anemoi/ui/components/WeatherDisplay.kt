@@ -18,17 +18,19 @@ import com.example.anemoi.util.formatTemp
 fun WeatherDisplay(
     weather: WeatherResponse?,
     tempUnit: TempUnit,
-    isStale: Boolean,
     showDashesOverride: Boolean = false,
-    textAlpha: Float = 0.8f
+    textAlpha: Float = 0.8f,
+    useStaleColor: Boolean = false
 ) {
-    // Condition: Use dashes if explicitly overridden (e.g. location not found)
-    // OR if the data is stale OR if no weather data exists.
-    val showDashes = showDashesOverride || isStale || weather == null
-    
+    val showDashes = showDashesOverride || weather == null
+
     val current = weather?.currentWeather
     val hourly = weather?.hourly
     val daily = weather?.daily
+
+    val baseTextColor = if (useStaleColor) Color(0xFFB0B0B0) else Color.White
+    val primaryTextColor = baseTextColor.copy(alpha = textAlpha)
+    val secondaryTextColor = baseTextColor.copy(alpha = (textAlpha * 0.77f).coerceIn(0f, 1f))
 
     Column(
         modifier = Modifier
@@ -46,7 +48,7 @@ fun WeatherDisplay(
             text = tempText,
             fontSize = 100.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = textAlpha)
+            color = primaryTextColor
         )
 
         // Feels Like
@@ -59,7 +61,7 @@ fun WeatherDisplay(
         Text(
             text = feelsLikeText,
             fontSize = 20.sp,
-            color = Color.White.copy(alpha = textAlpha * 0.77f),
+            color = secondaryTextColor,
             textAlign = TextAlign.Center
         )
 
@@ -82,13 +84,13 @@ fun WeatherDisplay(
             Text(
                 text = "H: $hTemp",
                 fontSize = 17.sp,
-                color = Color.White.copy(alpha = textAlpha * 0.77f)
+                color = secondaryTextColor
             )
             Spacer(modifier = Modifier.width(32.dp))
             Text(
                 text = "L: $lTemp",
                 fontSize = 17.sp,
-                color = Color.White.copy(alpha = textAlpha * 0.77f)
+                color = secondaryTextColor
             )
         }
     }

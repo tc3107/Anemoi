@@ -1,47 +1,73 @@
 package com.example.anemoi.viewmodel
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.content.pm.PackageManager
-import android.Manifest
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.anemoi.data.*
-import com.example.anemoi.util.*
+import com.example.anemoi.data.CurrentWeather
+import com.example.anemoi.data.DailyData
+import com.example.anemoi.data.GeocodingResponse
+import com.example.anemoi.data.HourlyData
+import com.example.anemoi.data.LocationItem
+import com.example.anemoi.data.NominatimService
+import com.example.anemoi.data.OpenMeteoService
+import com.example.anemoi.data.PressureUnit
+import com.example.anemoi.data.TempUnit
+import com.example.anemoi.data.WeatherResponse
+import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.util.dataStore
+import com.example.anemoi.util.obfuscateLocation
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import org.osmdroid.tileprovider.cachemanager.CacheManager
-import org.osmdroid.tileprovider.MapTileProviderBasic
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.views.MapView
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.io.File
-import java.util.Locale
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.util.ArrayDeque
 import java.util.Calendar
+import java.util.Locale
+import kotlin.math.max
 
 data class WeatherUiState(
     val searchQuery: String = "",
@@ -50,12 +76,17 @@ data class WeatherUiState(
     val searchedLocation: LocationItem? = null,
     val selectedLocation: LocationItem? = null,
     val lastLiveLocation: LocationItem? = null,
-    val weatherMap: Map<String, WeatherResponse> = emptyMap(), // Key: "original_lat,original_lon"
-    val updateTimeMap: Map<String, Long> = emptyMap(), // Key: "original_lat,original_lon"
+    val weatherMap: Map<String, WeatherResponse> = emptyMap(),
+    val updateTimeMap: Map<String, Long> = emptyMap(),
+    val currentUpdateTimeMap: Map<String, Long> = emptyMap(),
+    val hourlyUpdateTimeMap: Map<String, Long> = emptyMap(),
+    val dailyUpdateTimeMap: Map<String, Long> = emptyMap(),
+    val cacheSignatureMap: Map<String, String> = emptyMap(),
+    val activeRequestSignature: String = "",
     val isLoading: Boolean = false,
     val isLocating: Boolean = false,
     val locationFound: Boolean = false,
-    val pageStatuses: Map<String, Boolean> = emptyMap(), // Key: "original_lat,original_lon"
+    val pageStatuses: Map<String, Boolean> = emptyMap(),
     val isFollowMode: Boolean = false,
     val isSettingsOpen: Boolean = false,
     val isOrganizerMode: Boolean = false,
@@ -72,9 +103,75 @@ data class WeatherUiState(
     val searchBarTintAlpha: Float = 0.15f,
     val obfuscationMode: ObfuscationMode = ObfuscationMode.PRECISE,
     val gridKm: Float = 5.0f,
-    val lastResponseCoords: Pair<Double, Double>? = null, // lat, lon
+    val lastResponseCoords: Pair<Double, Double>? = null,
     val responseAnimTrigger: Long = 0L,
     val experimentalEnabled: Boolean = false
+)
+
+private enum class RefreshTrigger {
+    USER_INTERACTION,
+    BACKGROUND,
+    STARTUP
+}
+
+private data class SearchCacheEntry(
+    val normalizedQuery: String,
+    val cachedAt: Long,
+    val suggestions: List<CachedSuggestion>
+)
+
+private data class PlaceCacheEntry(
+    val displayName: String,
+    val lat: Double,
+    val lon: Double,
+    val cachedAt: Long
+)
+
+private data class BackoffState(
+    var failureCount: Int = 0,
+    var retryAfterMs: Long = 0L
+)
+
+@Serializable
+private data class CachedSuggestion(
+    val placeId: Long,
+    val displayName: String,
+    val lat: Double,
+    val lon: Double
+)
+
+@Serializable
+private data class PersistedWeatherEntry(
+    val key: String,
+    val weather: WeatherResponse,
+    val currentUpdatedAt: Long = 0L,
+    val hourlyUpdatedAt: Long = 0L,
+    val dailyUpdatedAt: Long = 0L,
+    val signature: String = ""
+)
+
+@Serializable
+private data class PersistedSearchEntry(
+    val query: String,
+    val normalizedQuery: String,
+    val cachedAt: Long,
+    val suggestions: List<CachedSuggestion>
+)
+
+@Serializable
+private data class PersistedPlaceEntry(
+    val placeId: Long,
+    val displayName: String,
+    val lat: Double,
+    val lon: Double,
+    val cachedAt: Long
+)
+
+@Serializable
+private data class PersistedWeatherState(
+    val weatherEntries: List<PersistedWeatherEntry> = emptyList(),
+    val searchEntries: List<PersistedSearchEntry> = emptyList(),
+    val placeEntries: List<PersistedPlaceEntry> = emptyList()
 )
 
 class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
@@ -114,9 +211,18 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private var stalenessCheckJob: Job? = null
     private var followModeJob: Job? = null
     private var startupPrefetchJob: Job? = null
-    private var lastFetchTime = 0L
+    private var persistCachesJob: Job? = null
+    private val inFlightWeatherRequests = mutableMapOf<String, Deferred<Boolean>>()
+
     private var lastLocation: LocationItem? = null
-    private val weatherFreshnessMs = 15 * 60000L
+    private var lastMeaningfulSearchQuery = ""
+
+    private val searchQueryCache = mutableMapOf<String, SearchCacheEntry>()
+    private val placeIdCache = mutableMapOf<Long, PlaceCacheEntry>()
+
+    private val locationRequestHistory = mutableMapOf<String, ArrayDeque<Long>>()
+    private val globalRequestHistory = ArrayDeque<Long>()
+    private val locationBackoff = mutableMapOf<String, BackoffState>()
 
     private val lastLocationKey = stringPreferencesKey("last_location")
     private val searchedLocationKey = stringPreferencesKey("searched_location")
@@ -136,6 +242,31 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val obfuscationModeKey = stringPreferencesKey("obfuscation_mode")
     private val gridKmKey = floatPreferencesKey("grid_km")
     private val experimentalKey = booleanPreferencesKey("experimental_enabled")
+    private val persistedCacheKey = stringPreferencesKey("persisted_cache_v2")
+
+    private val whitespaceRegex = Regex("\\s+")
+
+    private val currentFreshnessMs = 5 * 60 * 1000L
+    private val hourlyFreshnessMs = 20 * 60 * 1000L
+    private val dailyFreshnessMs = 2 * 60 * 60 * 1000L
+    private val staleServeWindowMs = 12 * 60 * 60 * 1000L
+    private val staleCheckIntervalMs = 60 * 1000L
+    private val backgroundRefreshIntervalMs = 60 * 60 * 1000L
+
+    private val locationMinRequestIntervalMs = 60 * 1000L
+    private val globalRequestWindowMs = 60 * 1000L
+    private val globalRequestLimitPerWindow = 30
+
+    private val queryCacheTtlMs = 24 * 60 * 60 * 1000L
+    private val placeCacheTtlMs = 30L * 24 * 60 * 60 * 1000L
+    private val searchDebounceMs = 350L
+
+    private val backoffStepsMs = longArrayOf(5_000L, 15_000L, 60_000L, 5 * 60_000L)
+
+    private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index"
+    private val dailyFields = "temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max"
+    private val staleDataError = "Weather cache is missing or older than 12 hours"
+
     private val defaultLocation = LocationItem(
         name = "New York",
         lat = 40.7128,
@@ -143,9 +274,75 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     )
 
     init {
+        _uiState.update { state ->
+            state.copy(activeRequestSignature = buildRequestSignature(state))
+        }
         loadSettings()
         startAutoUpdate()
         startStalenessCheck()
+    }
+
+    private fun buildRequestSignature(state: WeatherUiState): String {
+        val localeTag = Locale.getDefault().toLanguageTag()
+        val gridString = String.format(Locale.US, "%.3f", state.gridKm)
+        return listOf(
+            "tz=auto",
+            "locale=$localeTag",
+            "hourly=$hourlyFields",
+            "daily=$dailyFields",
+            "obf=${state.obfuscationMode}",
+            "grid=$gridString"
+        ).joinToString("|")
+    }
+
+    private fun activeRequestSignature(state: WeatherUiState = _uiState.value): String {
+        return buildRequestSignature(state)
+    }
+
+    private fun refreshActiveRequestSignature() {
+        var changed = false
+        var signature = ""
+        _uiState.update { state ->
+            signature = buildRequestSignature(state)
+            if (signature == state.activeRequestSignature) {
+                state
+            } else {
+                changed = true
+                state.copy(activeRequestSignature = signature)
+            }
+        }
+        if (changed) {
+            pruneCachesForSignatureMismatch(signature)
+        }
+    }
+
+    private fun pruneCachesForSignatureMismatch(activeSignature: String) {
+        val state = _uiState.value
+        val keysToRemove = state.cacheSignatureMap.filterValues { cached ->
+            cached != activeSignature
+        }.keys
+        if (keysToRemove.isEmpty()) return
+
+        _uiState.update { current ->
+            current.copy(
+                weatherMap = current.weatherMap - keysToRemove,
+                updateTimeMap = current.updateTimeMap - keysToRemove,
+                currentUpdateTimeMap = current.currentUpdateTimeMap - keysToRemove,
+                hourlyUpdateTimeMap = current.hourlyUpdateTimeMap - keysToRemove,
+                dailyUpdateTimeMap = current.dailyUpdateTimeMap - keysToRemove,
+                cacheSignatureMap = current.cacheSignatureMap - keysToRemove,
+                pageStatuses = current.pageStatuses - keysToRemove
+            )
+        }
+        keysToRemove.forEach { locationKey ->
+            val inFlightKeys = inFlightWeatherRequests.keys.filter { requestKey ->
+                requestKey.startsWith("$locationKey|")
+            }
+            inFlightKeys.forEach { requestKey ->
+                inFlightWeatherRequests.remove(requestKey)
+            }
+        }
+        persistCachesSoon()
     }
 
     private fun loadSettings() {
@@ -161,15 +358,27 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             }
 
             val favs = prefs[favoritesKey]?.let {
-                try { json.decodeFromString<List<LocationItem>>(it) } catch (e: Exception) { emptyList() }
+                try {
+                    json.decodeFromString<List<LocationItem>>(it)
+                } catch (_: Exception) {
+                    emptyList()
+                }
             } ?: emptyList()
-            
+
             val searched = prefs[searchedLocationKey]?.let {
-                try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
+                try {
+                    json.decodeFromString<LocationItem>(it)
+                } catch (_: Exception) {
+                    null
+                }
             }
 
             val live = prefs[liveLocationKey]?.let {
-                try { json.decodeFromString<LocationItem>(it) } catch (e: Exception) { null }
+                try {
+                    json.decodeFromString<LocationItem>(it)
+                } catch (_: Exception) {
+                    null
+                }
             }
 
             _uiState.update { state ->
@@ -193,8 +402,9 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     experimentalEnabled = prefs[experimentalKey] ?: false
                 )
             }
-            
-            // Pre-cache tiles for favorites
+            refreshActiveRequestSignature()
+
+            loadPersistedCaches(prefs)
             preCacheLocations(favs + listOfNotNull(searched, live))
 
             if (_uiState.value.isFollowMode) {
@@ -228,27 +438,90 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    private fun loadPersistedCaches(prefs: Preferences) {
+        val encoded = prefs[persistedCacheKey] ?: return
+        val now = System.currentTimeMillis()
+        try {
+            val persisted = json.decodeFromString<PersistedWeatherState>(encoded)
+            val signature = activeRequestSignature()
+
+            val weatherMap = mutableMapOf<String, WeatherResponse>()
+            val currentMap = mutableMapOf<String, Long>()
+            val hourlyMap = mutableMapOf<String, Long>()
+            val dailyMap = mutableMapOf<String, Long>()
+            val updateMap = mutableMapOf<String, Long>()
+            val signatureMap = mutableMapOf<String, String>()
+
+            persisted.weatherEntries.forEach { entry ->
+                if (entry.signature.isNotBlank() && entry.signature != signature) {
+                    return@forEach
+                }
+                weatherMap[entry.key] = entry.weather
+                currentMap[entry.key] = entry.currentUpdatedAt
+                hourlyMap[entry.key] = entry.hourlyUpdatedAt
+                dailyMap[entry.key] = entry.dailyUpdatedAt
+                updateMap[entry.key] = max(entry.currentUpdatedAt, max(entry.hourlyUpdatedAt, entry.dailyUpdatedAt))
+                signatureMap[entry.key] = signature
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    weatherMap = weatherMap,
+                    currentUpdateTimeMap = currentMap,
+                    hourlyUpdateTimeMap = hourlyMap,
+                    dailyUpdateTimeMap = dailyMap,
+                    updateTimeMap = updateMap,
+                    cacheSignatureMap = signatureMap
+                )
+            }
+
+            searchQueryCache.clear()
+            persisted.searchEntries.forEach { entry ->
+                if (now - entry.cachedAt <= queryCacheTtlMs) {
+                    searchQueryCache[entry.query] = SearchCacheEntry(
+                        normalizedQuery = entry.normalizedQuery,
+                        cachedAt = entry.cachedAt,
+                        suggestions = entry.suggestions
+                    )
+                }
+            }
+
+            placeIdCache.clear()
+            persisted.placeEntries.forEach { entry ->
+                if (now - entry.cachedAt <= placeCacheTtlMs) {
+                    placeIdCache[entry.placeId] = PlaceCacheEntry(
+                        displayName = entry.displayName,
+                        lat = entry.lat,
+                        lon = entry.lon,
+                        cachedAt = entry.cachedAt
+                    )
+                }
+            }
+
+            pruneExpiredWeatherEntries(now)
+            addLog("Restored persisted cache state")
+        } catch (e: Exception) {
+            addLog("Failed to restore persisted cache: ${e.message}")
+        }
+    }
+
     private fun prefetchWeatherOnStartup(locations: List<LocationItem>) {
-        val uniqueLocations = locations.distinctBy { "${it.lat},${it.lon}" }
+        val uniqueLocations = locations.distinctBy { locationKey(it) }
         if (uniqueLocations.isEmpty()) return
 
         startupPrefetchJob?.cancel()
         startupPrefetchJob = viewModelScope.launch {
             addLog("Startup weather prefetch: ${uniqueLocations.size} location(s)")
             uniqueLocations.forEach { location ->
-                val key = "${location.lat},${location.lon}"
-                val lastUpdate = _uiState.value.updateTimeMap[key] ?: 0L
-                val hasFreshData = _uiState.value.weatherMap[key] != null &&
-                    (System.currentTimeMillis() - lastUpdate <= weatherFreshnessMs)
-                if (hasFreshData) return@forEach
-
-                fetchAndStoreWeather(
+                requestWeatherIfNeeded(
                     location = location,
-                    showLoading = false,
+                    force = false,
+                    trigger = RefreshTrigger.STARTUP,
                     animateResponse = false,
-                    bypassFollowModeGuard = true
+                    bypassFollowModeGuard = true,
+                    showLoading = false
                 )
-                delay(150)
+                delay(120)
             }
         }
     }
@@ -257,17 +530,15 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         if (locations.isEmpty()) return
         viewModelScope.launch {
             try {
-                // Initialize provider and MapView on Main
-                val cacheManager = withContext(Dispatchers.Main) { 
+                val cacheManager = withContext(Dispatchers.Main) {
                     val mapView = MapView(applicationContext)
-                    CacheManager(mapView) 
+                    CacheManager(mapView)
                 }
-                
+
                 withContext(Dispatchers.IO) {
-                    locations.distinctBy { "${it.lat},${it.lon}" }.forEach { loc ->
+                    locations.distinctBy { locationKey(it) }.forEach { loc ->
                         addLog("Pre-caching tiles for: ${loc.name}")
                         val bb = BoundingBox(loc.lat + 0.08, loc.lon + 0.08, loc.lat - 0.08, loc.lon - 0.08)
-                        // Download zoom levels 13 to 17 for a good range of detail
                         cacheManager.downloadAreaAsync(applicationContext, bb, 13, 17)
                     }
                 }
@@ -281,27 +552,110 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         stalenessCheckJob?.cancel()
         stalenessCheckJob = viewModelScope.launch {
             while (true) {
-                delay(5000)
+                delay(staleCheckIntervalMs)
+                refreshActiveRequestSignature()
                 val now = System.currentTimeMillis()
-                val selectedLoc = _uiState.value.selectedLocation
-                val staleThreshold = weatherFreshnessMs
-                val stalenessError = "Weather data is more than 15 minutes old"
+                pruneExpiredWeatherEntries(now)
 
-                if (selectedLoc != null) {
-                    val key = "${selectedLoc.lat},${selectedLoc.lon}"
-                    val lastUpdate = _uiState.value.updateTimeMap[key] ?: 0L
-                    val isStale = lastUpdate == 0L || (now - lastUpdate > staleThreshold)
-                    
-                    if (isStale) {
-                        addError(stalenessError)
-                    } else {
-                        removeError(stalenessError)
-                    }
+                val selectedLoc = _uiState.value.selectedLocation
+                if (selectedLoc == null) {
+                    removeError(staleDataError)
+                    continue
+                }
+
+                val key = locationKey(selectedLoc)
+                val hasUsable = hasAnyUsableData(key, now)
+                if (hasUsable) {
+                    removeError(staleDataError)
                 } else {
-                    removeError(stalenessError)
+                    addError(staleDataError)
                 }
             }
         }
+    }
+
+    private fun isSignatureMatchForLocation(
+        locationKey: String,
+        state: WeatherUiState = _uiState.value
+    ): Boolean {
+        val cachedSignature = state.cacheSignatureMap[locationKey] ?: return false
+        return cachedSignature == activeRequestSignature(state)
+    }
+
+    private fun weatherForActiveSignature(
+        locationKey: String,
+        state: WeatherUiState = _uiState.value
+    ): WeatherResponse? {
+        if (!isSignatureMatchForLocation(locationKey, state)) {
+            return null
+        }
+        return state.weatherMap[locationKey]
+    }
+
+    private fun hasAnyUsableData(key: String, now: Long): Boolean {
+        val state = _uiState.value
+        val weather = weatherForActiveSignature(key, state) ?: return false
+
+        val currentUsable = isDatasetUsable(
+            hasData = weather.currentWeather != null,
+            updatedAt = state.currentUpdateTimeMap[key] ?: 0L,
+            now = now,
+            maxAgeMs = staleServeWindowMs
+        )
+        val hourlyUsable = isDatasetUsable(
+            hasData = weather.hourly != null,
+            updatedAt = state.hourlyUpdateTimeMap[key] ?: 0L,
+            now = now,
+            maxAgeMs = staleServeWindowMs
+        )
+        val dailyUsable = isDatasetUsable(
+            hasData = weather.daily != null,
+            updatedAt = state.dailyUpdateTimeMap[key] ?: 0L,
+            now = now,
+            maxAgeMs = staleServeWindowMs
+        )
+
+        return currentUsable || hourlyUsable || dailyUsable
+    }
+
+    private fun isDatasetUsable(hasData: Boolean, updatedAt: Long, now: Long, maxAgeMs: Long): Boolean {
+        return hasData && updatedAt > 0L && (now - updatedAt) <= maxAgeMs
+    }
+
+    private fun pruneExpiredWeatherEntries(now: Long = System.currentTimeMillis()) {
+        val state = _uiState.value
+        if (state.weatherMap.isEmpty()) return
+
+        val keysToRemove = state.weatherMap.keys.filter { key ->
+            !hasAnyUsableData(key, now)
+        }.toSet()
+
+        if (keysToRemove.isEmpty()) return
+
+        _uiState.update { current ->
+            current.copy(
+                weatherMap = current.weatherMap - keysToRemove,
+                updateTimeMap = current.updateTimeMap - keysToRemove,
+                currentUpdateTimeMap = current.currentUpdateTimeMap - keysToRemove,
+                hourlyUpdateTimeMap = current.hourlyUpdateTimeMap - keysToRemove,
+                dailyUpdateTimeMap = current.dailyUpdateTimeMap - keysToRemove,
+                cacheSignatureMap = current.cacheSignatureMap - keysToRemove,
+                pageStatuses = current.pageStatuses - keysToRemove
+            )
+        }
+
+        keysToRemove.forEach {
+            locationBackoff.remove(it)
+            locationRequestHistory.remove(it)
+            val inFlightKeys = inFlightWeatherRequests.keys.filter { requestKey ->
+                requestKey.startsWith("$it|")
+            }
+            inFlightKeys.forEach { requestKey ->
+                inFlightWeatherRequests.remove(requestKey)
+            }
+        }
+
+        persistCachesSoon()
     }
 
     private fun addError(error: String) {
@@ -366,6 +720,59 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    private fun persistCachesSoon() {
+        persistCachesJob?.cancel()
+        persistCachesJob = viewModelScope.launch {
+            delay(120)
+            persistCachesNow()
+        }
+    }
+
+    private suspend fun persistCachesNow() {
+        val state = _uiState.value
+        val weatherEntries = state.weatherMap.map { (key, weather) ->
+            PersistedWeatherEntry(
+                key = key,
+                weather = weather,
+                currentUpdatedAt = state.currentUpdateTimeMap[key] ?: 0L,
+                hourlyUpdatedAt = state.hourlyUpdateTimeMap[key] ?: 0L,
+                dailyUpdatedAt = state.dailyUpdateTimeMap[key] ?: 0L,
+                signature = state.cacheSignatureMap[key] ?: activeRequestSignature(state)
+            )
+        }
+
+        val searchEntries = searchQueryCache.map { (query, entry) ->
+            PersistedSearchEntry(
+                query = query,
+                normalizedQuery = entry.normalizedQuery,
+                cachedAt = entry.cachedAt,
+                suggestions = entry.suggestions
+            )
+        }
+
+        val placeEntries = placeIdCache.map { (placeId, entry) ->
+            PersistedPlaceEntry(
+                placeId = placeId,
+                displayName = entry.displayName,
+                lat = entry.lat,
+                lon = entry.lon,
+                cachedAt = entry.cachedAt
+            )
+        }
+
+        val payload = json.encodeToString(
+            PersistedWeatherState(
+                weatherEntries = weatherEntries,
+                searchEntries = searchEntries,
+                placeEntries = placeEntries
+            )
+        )
+
+        applicationContext.dataStore.edit { prefs ->
+            prefs[persistedCacheKey] = payload
+        }
+    }
+
     fun setTempUnit(unit: TempUnit) {
         _uiState.update { it.copy(tempUnit = unit) }
         viewModelScope.launch {
@@ -373,8 +780,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 settings[tempUnitKey] = unit.name
             }
         }
-        // Force refresh for unit change
-        _uiState.value.selectedLocation?.let { fetchWeather(it, force = true) }
     }
 
     fun setPressureUnit(unit: PressureUnit) {
@@ -384,7 +789,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 settings[pressureUnitKey] = unit.name
             }
         }
-        // No network fetch needed for unit conversion, handled in UI
     }
 
     fun toggleCustomValues(enabled: Boolean) {
@@ -396,7 +800,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val defaultSheetDistortion = 0.2f
         val defaultSearchBarTint = 0.15f
 
-        _uiState.update { 
+        _uiState.update {
             it.copy(
                 customValuesEnabled = enabled,
                 mapZoom = defaultZoom,
@@ -406,7 +810,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 sheetBlurStrength = defaultSheetBlur,
                 sheetDistortion = defaultSheetDistortion,
                 searchBarTintAlpha = defaultSearchBarTint
-            ) 
+            )
         }
         viewModelScope.launch {
             applicationContext.dataStore.edit { prefs ->
@@ -474,6 +878,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     fun setObfuscationMode(mode: ObfuscationMode) {
         addLog("Obfuscation mode set to: $mode")
         _uiState.update { it.copy(obfuscationMode = mode) }
+        refreshActiveRequestSignature()
         viewModelScope.launch {
             applicationContext.dataStore.edit { it[obfuscationModeKey] = mode.name }
         }
@@ -483,6 +888,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     fun setGridKm(km: Float) {
         addLog("Grid size set to: $km km")
         _uiState.update { it.copy(gridKm = km) }
+        refreshActiveRequestSignature()
         viewModelScope.launch {
             applicationContext.dataStore.edit { it[gridKmKey] = km }
         }
@@ -553,14 +959,16 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun setFollowMode(enabled: Boolean, context: Context) {
         if (_uiState.value.isFollowMode == enabled) return
-        
-        _uiState.update { it.copy(
-            isFollowMode = enabled, 
-            pageStatuses = emptyMap(),
-            selectedLocation = if (enabled) it.lastLiveLocation ?: it.selectedLocation else it.selectedLocation
-        ) }
+
+        _uiState.update {
+            it.copy(
+                isFollowMode = enabled,
+                pageStatuses = emptyMap(),
+                selectedLocation = if (enabled) it.lastLiveLocation ?: it.selectedLocation else it.selectedLocation
+            )
+        }
         saveFollowMode(enabled)
-        
+
         if (enabled) {
             addLog("Follow mode enabled")
             startFollowMode(context)
@@ -589,7 +997,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             return
         }
         val actNw = connectivityManager.getNetworkCapabilities(nw)
-        val isConnected = actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR))
+        val isConnected = actNw != null && (
+            actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            )
         addLog("Network: ${if (isConnected) "Connected" else "Disconnected"}")
     }
 
@@ -608,7 +1019,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 addLog("API: Nominatim FAILED (${e.message})")
             }
             try {
-                openMeteoService.getWeather(51.5, -0.1)
+                openMeteoService.getWeather(
+                    lat = 51.5,
+                    lon = -0.1,
+                    currentWeather = true,
+                    hourly = hourlyFields,
+                    daily = dailyFields
+                )
                 addLog("API: OpenMeteo OK")
             } catch (e: Exception) {
                 addLog("API: OpenMeteo FAILED (${e.message})")
@@ -619,8 +1036,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     @SuppressLint("MissingPermission")
     fun getCurrentLocation(context: Context, isSilent: Boolean = false) {
         if (locationJob?.isActive == true) return
-        
-        if (!isSilent) _uiState.update { it.copy(isLocating = true) }
+
+        if (!isSilent) {
+            _uiState.update { it.copy(isLocating = true) }
+        }
         addLog("Starting location request...")
 
         locationJob = viewModelScope.launch {
@@ -629,7 +1048,9 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 val timeoutJob = launch {
                     delay(15000)
                     cts.cancel()
-                    if (!isSilent) _uiState.update { it.copy(isLocating = false) }
+                    if (!isSilent) {
+                        _uiState.update { it.copy(isLocating = false) }
+                    }
                     addLog("Location request timed out")
                 }
 
@@ -638,12 +1059,12 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                         Priority.PRIORITY_HIGH_ACCURACY,
                         cts.token
                     ).await()
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null
                 }
 
                 timeoutJob.cancel()
-                
+
                 if (location != null) {
                     addLog("Location found: ${location.latitude}, ${location.longitude}")
                     val name = withContext(Dispatchers.IO) {
@@ -651,21 +1072,20 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                             val geocoder = Geocoder(applicationContext, Locale.getDefault())
                             @Suppress("DEPRECATION")
                             val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
-                            addresses?.firstOrNull()?.let { 
+                            addresses?.firstOrNull()?.let {
                                 it.locality ?: it.subAdminArea ?: it.adminArea ?: "Current Location"
                             } ?: "Current Location"
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             "Current Location"
                         }
                     }
-                    
+
                     val liveLoc = LocationItem(name, location.latitude, location.longitude)
                     _uiState.update { it.copy(locationFound = true, lastLiveLocation = liveLoc) }
                     saveLiveLocation(liveLoc)
                     onLocationSelected(liveLoc, isManualSearch = false)
                 } else {
                     addLog("Location returned null or cancelled")
-                    // Don't set locationFound to false if we have a lastLiveLocation
                     if (_uiState.value.lastLiveLocation == null) {
                         _uiState.update { it.copy(locationFound = false) }
                     }
@@ -683,14 +1103,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun onSearchQueryChanged(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        
+
         if (query.isNotEmpty()) {
             if (_uiState.value.isLocating) {
                 locationJob?.cancel()
                 _uiState.update { it.copy(isLocating = false) }
                 addLog("Location cancelled by search")
             }
-            // Search cancels follow mode
             if (_uiState.value.isFollowMode) {
                 _uiState.update { it.copy(isFollowMode = false) }
                 saveFollowMode(false)
@@ -700,23 +1119,135 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
 
         searchJob?.cancel()
-        if (query.isNotBlank()) {
-            searchJob = viewModelScope.launch {
-                delay(500)
-                try {
-                    val response = nominatimService.search(query)
-                    _uiState.update { state ->
-                        state.copy(suggestions = response.map { res ->
-                            val isFav = state.favorites.any { it.name == res.displayName }
-                            LocationItem(res.displayName, res.lat.toDouble(), res.lon.toDouble(), isFavorite = isFav) 
-                        })
-                    }
-                } catch (e: Exception) {
-                    addLog("Search Error: ${e.message}")
-                }
-            }
-        } else {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            lastMeaningfulSearchQuery = ""
             _uiState.update { it.copy(suggestions = emptyList()) }
+            return
+        }
+
+        searchJob = viewModelScope.launch {
+            delay(searchDebounceMs)
+
+            val latestQuery = _uiState.value.searchQuery.trim()
+            if (latestQuery.isBlank()) {
+                _uiState.update { it.copy(suggestions = emptyList()) }
+                return@launch
+            }
+
+            val now = System.currentTimeMillis()
+            pruneSearchCaches(now)
+
+            val normalized = normalizeQuery(latestQuery)
+            if (normalized.isBlank()) {
+                _uiState.update { it.copy(suggestions = emptyList()) }
+                return@launch
+            }
+
+            val cachedEntry = searchQueryCache[latestQuery]
+            if (cachedEntry != null && now - cachedEntry.cachedAt <= queryCacheTtlMs) {
+                publishSuggestions(cachedEntry.suggestions)
+                lastMeaningfulSearchQuery = cachedEntry.normalizedQuery
+                addLog("Search cache hit for '$latestQuery'")
+                return@launch
+            }
+
+            if (normalized == lastMeaningfulSearchQuery) {
+                addLog("Search skipped; query has no meaningful change")
+                return@launch
+            }
+
+            try {
+                val response = nominatimService.search(latestQuery)
+                val suggestions = response.mapNotNull { buildCachedSuggestion(it, now) }
+
+                searchQueryCache[latestQuery] = SearchCacheEntry(
+                    normalizedQuery = normalized,
+                    cachedAt = now,
+                    suggestions = suggestions
+                )
+                publishSuggestions(suggestions)
+                lastMeaningfulSearchQuery = normalized
+                persistCachesSoon()
+            } catch (e: Exception) {
+                addLog("Search Error: ${e.message}")
+            }
+        }
+    }
+
+    private fun normalizeQuery(query: String): String {
+        return query.trim().lowercase(Locale.US).replace(whitespaceRegex, " ")
+    }
+
+    private fun buildCachedSuggestion(response: GeocodingResponse, now: Long): CachedSuggestion? {
+        val placeId = response.placeId
+        val cachedPlace = placeIdCache[placeId]?.takeIf { now - it.cachedAt <= placeCacheTtlMs }
+
+        val lat = cachedPlace?.lat ?: response.lat.toDoubleOrNull()
+        val lon = cachedPlace?.lon ?: response.lon.toDoubleOrNull()
+        if (lat == null || lon == null) {
+            return null
+        }
+
+        val displayName = if (response.displayName.isNotBlank()) {
+            response.displayName
+        } else {
+            cachedPlace?.displayName ?: return null
+        }
+
+        placeIdCache[placeId] = PlaceCacheEntry(
+            displayName = displayName,
+            lat = lat,
+            lon = lon,
+            cachedAt = now
+        )
+
+        return CachedSuggestion(
+            placeId = placeId,
+            displayName = displayName,
+            lat = lat,
+            lon = lon
+        )
+    }
+
+    private fun publishSuggestions(suggestions: List<CachedSuggestion>) {
+        _uiState.update { state ->
+            val mapped = suggestions.map { suggestion ->
+                val isFav = state.favorites.any { favorite -> favorite.name == suggestion.displayName }
+                LocationItem(
+                    name = suggestion.displayName,
+                    lat = suggestion.lat,
+                    lon = suggestion.lon,
+                    isFavorite = isFav
+                )
+            }
+            state.copy(suggestions = mapped)
+        }
+    }
+
+    private fun pruneSearchCaches(now: Long = System.currentTimeMillis()) {
+        var changed = false
+
+        val queryIterator = searchQueryCache.entries.iterator()
+        while (queryIterator.hasNext()) {
+            val entry = queryIterator.next()
+            if (now - entry.value.cachedAt > queryCacheTtlMs) {
+                queryIterator.remove()
+                changed = true
+            }
+        }
+
+        val placeIterator = placeIdCache.entries.iterator()
+        while (placeIterator.hasNext()) {
+            val entry = placeIterator.next()
+            if (now - entry.value.cachedAt > placeCacheTtlMs) {
+                placeIterator.remove()
+                changed = true
+            }
+        }
+
+        if (changed) {
+            persistCachesSoon()
         }
     }
 
@@ -724,13 +1255,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         addLog("Location selected: ${location.name} (${location.lat}, ${location.lon})")
         val updatedLocation = location.copy(lastViewed = System.currentTimeMillis())
         val isFavorite = _uiState.value.favorites.any { it.name == location.name }
-        
+
         lastLocation = updatedLocation
         _uiState.update { state ->
             val updatedFavorites = state.favorites.map {
                 if (it.name == location.name) updatedLocation else it
             }
-            
+
             val newSearchedLocation = if (isManualSearch && !isFavorite) {
                 updatedLocation
             } else if (isFavorite && state.searchedLocation?.name == location.name) {
@@ -747,16 +1278,15 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 favorites = updatedFavorites
             )
         }
-        
+
         if (isManualSearch) {
             saveSearchedLocation(_uiState.value.searchedLocation)
             preCacheLocations(listOf(updatedLocation))
         }
-        
-        // Dump pending requests when switching location
+
         locationJob?.cancel()
         weatherJob?.cancel()
-        
+
         saveLastLocation(updatedLocation)
         fetchWeather(updatedLocation)
     }
@@ -765,68 +1295,246 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         _uiState.update { state ->
             val isFav = state.favorites.any { it.name == location.name }
             val updated = location.copy(isFavorite = !isFav)
-            
+
             addLog("Favorite toggled for ${location.name}: ${!isFav}")
-            
+
             val newFavorites = if (!isFav) {
                 (state.favorites + updated).distinctBy { it.name }
             } else {
                 state.favorites.filter { it.name != location.name }
             }
-            
+
             saveFavorites(newFavorites)
             preCacheLocations(newFavorites)
-            
+
             val isNowFavorite = newFavorites.any { it.name == location.name }
             val newSearched = if (isNowFavorite && state.searchedLocation?.name == location.name) null else state.searchedLocation
-            if (newSearched != state.searchedLocation) saveSearchedLocation(newSearched)
+            if (newSearched != state.searchedLocation) {
+                saveSearchedLocation(newSearched)
+            }
 
-            val newSuggestions = state.suggestions.map { if (it.name == location.name) updated else it }
+            val newSuggestions = state.suggestions.map {
+                if (it.name == location.name) updated else it
+            }
             val newSelected = if (state.selectedLocation?.name == location.name) updated else state.selectedLocation
-            
+
             state.copy(
-                favorites = newFavorites, 
-                suggestions = newSuggestions, 
+                favorites = newFavorites,
+                suggestions = newSuggestions,
                 selectedLocation = newSelected,
                 searchedLocation = newSearched
             )
         }
     }
 
-    private fun fetchWeather(location: LocationItem, force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        val key = "${location.lat},${location.lon}"
-        val isFetchTooRecent = now - lastFetchTime < 2000
-        val lastUpdate = _uiState.value.updateTimeMap[key] ?: 0L
-        val hasCachedData = _uiState.value.weatherMap[key] != null
-        val isDataFresh = hasCachedData && (now - lastUpdate <= weatherFreshnessMs)
-        
-        if (!force && isDataFresh && isFetchTooRecent) {
-            addLog("Skipping fetch for ${location.name}, data is fresh or fetch too recent.")
-            return
-        }
-        
-        lastFetchTime = now
-
+    private fun fetchWeather(
+        location: LocationItem,
+        force: Boolean = false,
+        animateResponse: Boolean = true,
+        trigger: RefreshTrigger = RefreshTrigger.USER_INTERACTION,
+        bypassFollowModeGuard: Boolean = false
+    ) {
         weatherJob?.cancel()
-        _uiState.update { it.copy(isLoading = false) }
         weatherJob = viewModelScope.launch {
-            fetchAndStoreWeather(
+            val activeWeather = weatherForActiveSignature(locationKey(location))
+            requestWeatherIfNeeded(
                 location = location,
-                showLoading = !hasCachedData,
-                animateResponse = true,
-                bypassFollowModeGuard = false
+                force = force,
+                trigger = trigger,
+                animateResponse = animateResponse,
+                bypassFollowModeGuard = bypassFollowModeGuard,
+                showLoading = activeWeather == null
             )
         }
     }
 
+    private suspend fun requestWeatherIfNeeded(
+        location: LocationItem,
+        force: Boolean,
+        trigger: RefreshTrigger,
+        animateResponse: Boolean,
+        bypassFollowModeGuard: Boolean,
+        showLoading: Boolean
+    ): Boolean {
+        refreshActiveRequestSignature()
+        val key = locationKey(location)
+        val now = System.currentTimeMillis()
+        val state = _uiState.value
+        val signature = activeRequestSignature(state)
+        val existingWeather = weatherForActiveSignature(key, state)
+
+        val datasetsToRefresh = resolveDatasetsToRefresh(
+            key = key,
+            weather = existingWeather,
+            now = now,
+            force = force
+        )
+
+        if (datasetsToRefresh.isEmpty()) {
+            _uiState.update { it.copy(pageStatuses = it.pageStatuses + (key to true)) }
+            addLog("No fetch needed for ${location.name}; cache is within thresholds")
+            return false
+        }
+
+        val gateDecision = evaluateRequestGate(key, now)
+        if (!gateDecision.isAllowed) {
+            val waitMs = (gateDecision.nextAllowedAtMs - now).coerceAtLeast(0L)
+            val reasons = gateDecision.reasons.joinToString(" + ")
+            addLog("Skipping fetch for ${location.name}; gate=$reasons, retry in ${waitMs / 1000}s")
+            return false
+        }
+
+        val inFlightKey = buildInFlightKey(key, signature, datasetsToRefresh)
+        return runCoalescedRequest(inFlightKey) {
+            addLog(
+                "Fetching ${datasetsToRefresh.joinToString()} for ${location.name} " +
+                    "(${trigger.name.lowercase(Locale.US)})"
+            )
+
+            fetchAndStoreWeather(
+                location = location,
+                datasets = datasetsToRefresh,
+                showLoading = showLoading,
+                animateResponse = animateResponse,
+                bypassFollowModeGuard = bypassFollowModeGuard
+            )
+        }
+    }
+
+    private fun resolveDatasetsToRefresh(
+        key: String,
+        weather: WeatherResponse?,
+        now: Long,
+        force: Boolean
+    ): Set<WeatherDataset> {
+        val state = _uiState.value
+        val isSignatureMatch = isSignatureMatchForLocation(key, state)
+
+        val refreshInput = DatasetRefreshInput(
+            force = force,
+            hasCurrent = weather?.currentWeather != null,
+            hasHourly = weather?.hourly != null,
+            hasDaily = weather?.daily != null,
+            currentUpdatedAtMs = if (isSignatureMatch) state.currentUpdateTimeMap[key] ?: 0L else 0L,
+            hourlyUpdatedAtMs = if (isSignatureMatch) state.hourlyUpdateTimeMap[key] ?: 0L else 0L,
+            dailyUpdatedAtMs = if (isSignatureMatch) state.dailyUpdateTimeMap[key] ?: 0L else 0L,
+            nowMs = now,
+            thresholds = WeatherFreshnessThresholds(
+                currentMs = currentFreshnessMs,
+                hourlyMs = hourlyFreshnessMs,
+                dailyMs = dailyFreshnessMs
+            )
+        )
+
+        return WeatherRequestPolicy.resolveDatasetsToRefresh(refreshInput)
+    }
+
+    private fun evaluateRequestGate(locationKey: String, now: Long): RequestGateDecision {
+        pruneRequestHistories(now)
+
+        val history = locationRequestHistory[locationKey]
+        val snapshot = RequestGateSnapshot(
+            backoffUntilMs = locationBackoff[locationKey]?.retryAfterMs ?: 0L,
+            locationLastRequestAtMs = history?.lastOrNull(),
+            globalRequestCount = globalRequestHistory.size,
+            globalOldestRequestAtMs = globalRequestHistory.firstOrNull()
+        )
+        val config = RequestGateConfig(
+            locationMinRequestIntervalMs = locationMinRequestIntervalMs,
+            globalRequestWindowMs = globalRequestWindowMs,
+            globalRequestLimitPerWindow = globalRequestLimitPerWindow
+        )
+        return WeatherRequestPolicy.evaluateRequestGate(
+            nowMs = now,
+            snapshot = snapshot,
+            config = config
+        )
+    }
+
+    private fun buildInFlightKey(
+        locationKey: String,
+        signature: String,
+        datasets: Set<WeatherDataset>
+    ): String {
+        val datasetSignature = datasets
+            .map { it.name }
+            .sorted()
+            .joinToString(",")
+        return "$locationKey|$signature|$datasetSignature"
+    }
+
+    private suspend fun runCoalescedRequest(
+        requestKey: String,
+        block: suspend () -> Boolean
+    ): Boolean {
+        val existing = inFlightWeatherRequests[requestKey]
+        if (existing != null) {
+            addLog("Joining in-flight weather request")
+            return existing.await()
+        }
+
+        val deferred = viewModelScope.async(start = CoroutineStart.LAZY) {
+            block()
+        }
+        inFlightWeatherRequests[requestKey] = deferred
+
+        return try {
+            deferred.start()
+            deferred.await()
+        } finally {
+            val current = inFlightWeatherRequests[requestKey]
+            if (current === deferred) {
+                inFlightWeatherRequests.remove(requestKey)
+            }
+        }
+    }
+
+    private fun pruneRequestHistories(now: Long) {
+        val prunedGlobal = WeatherRequestPolicy.pruneTimestampsWithinWindow(
+            timestamps = globalRequestHistory,
+            nowMs = now,
+            windowMs = globalRequestWindowMs
+        )
+        globalRequestHistory.clear()
+        globalRequestHistory.addAll(prunedGlobal)
+
+        val iterator = locationRequestHistory.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val prunedLocation = WeatherRequestPolicy.pruneTimestampsWithinWindow(
+                timestamps = entry.value,
+                nowMs = now,
+                windowMs = locationMinRequestIntervalMs
+            )
+            if (prunedLocation.isEmpty()) {
+                iterator.remove()
+            } else {
+                entry.value.clear()
+                entry.value.addAll(prunedLocation)
+            }
+        }
+    }
+
+    private fun recordRequest(locationKey: String, now: Long) {
+        pruneRequestHistories(now)
+        globalRequestHistory.addLast(now)
+        val history = locationRequestHistory.getOrPut(locationKey) { ArrayDeque() }
+        history.addLast(now)
+    }
+
+    private fun locationKey(location: LocationItem): String {
+        return "${location.lat},${location.lon}"
+    }
+
     private suspend fun fetchAndStoreWeather(
         location: LocationItem,
+        datasets: Set<WeatherDataset>,
         showLoading: Boolean,
         animateResponse: Boolean,
         bypassFollowModeGuard: Boolean
     ): Boolean {
-        if (!bypassFollowModeGuard &&
+        if (
+            !bypassFollowModeGuard &&
             _uiState.value.isFollowMode &&
             !_uiState.value.locationFound &&
             location == _uiState.value.selectedLocation &&
@@ -835,7 +1543,11 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             return false
         }
 
-        val key = "${location.lat},${location.lon}"
+        if (datasets.isEmpty()) {
+            return false
+        }
+
+        val key = locationKey(location)
 
         val calendar = Calendar.getInstance()
         val seedStr = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.DAY_OF_YEAR)}"
@@ -853,41 +1565,223 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             _uiState.update { it.copy(isLoading = true) }
         }
 
-        addLog("Requesting weather from OpenMeteo: Lat=${obfuscated.latObf}, Lon=${obfuscated.lonObf} (Original: ${location.lat}, ${location.lon}, Mode: ${_uiState.value.obfuscationMode})")
+        addLog(
+            "Requesting weather: lat=${obfuscated.latObf}, lon=${obfuscated.lonObf} " +
+                "(orig ${location.lat}, ${location.lon}; mode=${_uiState.value.obfuscationMode})"
+        )
+
+        val requestTime = System.currentTimeMillis()
+        recordRequest(key, requestTime)
+
         return try {
-            val weather = openMeteoService.getWeather(obfuscated.latObf, obfuscated.lonObf)
+            val weather = openMeteoService.getWeather(
+                lat = obfuscated.latObf,
+                lon = obfuscated.lonObf,
+                currentWeather = if (WeatherDataset.CURRENT in datasets) true else null,
+                hourly = if (WeatherDataset.HOURLY in datasets) hourlyFields else null,
+                daily = if (WeatherDataset.DAILY in datasets) dailyFields else null
+            )
+
+            val stateBeforeUpdate = _uiState.value
+            val signature = activeRequestSignature(stateBeforeUpdate)
+            val existing = weatherForActiveSignature(key, stateBeforeUpdate)
+            val merged = mergeWeather(existing, weather, datasets)
+
+            val now = System.currentTimeMillis()
+            val newCurrentUpdatedAt = if (
+                WeatherDataset.CURRENT in datasets && weather.currentWeather != null
+            ) now else stateBeforeUpdate.currentUpdateTimeMap[key] ?: 0L
+
+            val newHourlyUpdatedAt = if (
+                WeatherDataset.HOURLY in datasets && weather.hourly != null
+            ) now else stateBeforeUpdate.hourlyUpdateTimeMap[key] ?: 0L
+
+            val newDailyUpdatedAt = if (
+                WeatherDataset.DAILY in datasets && weather.daily != null
+            ) now else stateBeforeUpdate.dailyUpdateTimeMap[key] ?: 0L
+
+            val combinedUpdatedAt = max(newCurrentUpdatedAt, max(newHourlyUpdatedAt, newDailyUpdatedAt))
+
             _uiState.update { state ->
                 state.copy(
-                    weatherMap = state.weatherMap + (key to weather),
-                    updateTimeMap = state.updateTimeMap + (key to System.currentTimeMillis()),
+                    weatherMap = state.weatherMap + (key to merged),
+                    currentUpdateTimeMap = state.currentUpdateTimeMap + (key to newCurrentUpdatedAt),
+                    hourlyUpdateTimeMap = state.hourlyUpdateTimeMap + (key to newHourlyUpdatedAt),
+                    dailyUpdateTimeMap = state.dailyUpdateTimeMap + (key to newDailyUpdatedAt),
+                    cacheSignatureMap = state.cacheSignatureMap + (key to signature),
+                    updateTimeMap = state.updateTimeMap + (key to combinedUpdatedAt),
                     isLoading = if (showLoading) false else state.isLoading,
                     pageStatuses = state.pageStatuses + (key to true),
                     lastResponseCoords = if (animateResponse) obfuscated.latObf to obfuscated.lonObf else state.lastResponseCoords,
-                    responseAnimTrigger = if (animateResponse) System.currentTimeMillis() else state.responseAnimTrigger
+                    responseAnimTrigger = if (animateResponse) now else state.responseAnimTrigger,
+                    errors = state.errors.filter { it != staleDataError }
                 )
             }
-            _uiState.update { state ->
-                state.copy(errors = state.errors.filter { it != "Weather data is more than 15 minutes old" })
+
+            val missingDatasets = mutableListOf<String>()
+            if (WeatherDataset.CURRENT in datasets && weather.currentWeather == null) {
+                missingDatasets += "current"
             }
-            addLog("Weather successfully updated for ${location.name}. Wind Dir: ${weather.currentWeather?.windDirection}")
+            if (WeatherDataset.HOURLY in datasets && weather.hourly == null) {
+                missingDatasets += "hourly"
+            }
+            if (WeatherDataset.DAILY in datasets && weather.daily == null) {
+                missingDatasets += "daily"
+            }
+            if (missingDatasets.isNotEmpty()) {
+                addLog("Weather response missing requested data: ${missingDatasets.joinToString()}")
+            }
+
+            locationBackoff.remove(key)
+            runCatching {
+                persistCachesJob?.cancel()
+                persistCachesNow()
+            }.onFailure { persistError ->
+                addLog("Cache persist failed after fetch: ${persistError.message}")
+            }
+            addLog("Weather updated for ${location.name}")
             true
         } catch (e: Exception) {
+            val retryableReason = classifyRetryableFailure(e)
+            val failureContext = buildFailureContext(
+                error = e,
+                datasets = datasets,
+                obfuscatedLat = obfuscated.latObf,
+                obfuscatedLon = obfuscated.lonObf
+            )
+            if (retryableReason != null) {
+                val delayMs = registerBackoff(key)
+                addLog(
+                    "Weather fetch failed for ${location.name}: $retryableReason. " +
+                        "Backoff ${delayMs / 1000}s. $failureContext"
+                )
+            } else {
+                addLog("Weather fetch failed for ${location.name}: ${e.message}. $failureContext")
+            }
+
             _uiState.update { state ->
                 state.copy(
                     isLoading = if (showLoading) false else state.isLoading,
                     pageStatuses = state.pageStatuses + (key to false)
                 )
             }
-            addLog("Weather fetch FAILED for ${location.name}: ${e.message}")
             false
         }
     }
 
+    private fun mergeWeather(
+        existing: WeatherResponse?,
+        incoming: WeatherResponse,
+        datasets: Set<WeatherDataset>
+    ): WeatherResponse {
+        val existingCurrent: CurrentWeather? = existing?.currentWeather
+        val existingHourly: HourlyData? = existing?.hourly
+        val existingDaily: DailyData? = existing?.daily
+
+        return WeatherResponse(
+            latitude = incoming.latitude,
+            longitude = incoming.longitude,
+            currentWeather = if (WeatherDataset.CURRENT in datasets) {
+                incoming.currentWeather ?: existingCurrent
+            } else {
+                existingCurrent
+            },
+            hourly = if (WeatherDataset.HOURLY in datasets) {
+                incoming.hourly ?: existingHourly
+            } else {
+                existingHourly
+            },
+            daily = if (WeatherDataset.DAILY in datasets) {
+                incoming.daily ?: existingDaily
+            } else {
+                existingDaily
+            }
+        )
+    }
+
+    private fun classifyRetryableFailure(error: Throwable): String? {
+        return when (error) {
+            is SocketTimeoutException -> "timeout"
+            is HttpException -> {
+                val code = error.code()
+                if (code == 429 || code in 500..599) {
+                    "http $code"
+                } else {
+                    null
+                }
+            }
+            is SerializationException -> "parse error"
+            is IOException -> "network error"
+            else -> {
+                val cause = error.cause
+                if (cause != null && cause !== error) {
+                    classifyRetryableFailure(cause)
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    private fun buildFailureContext(
+        error: Throwable,
+        datasets: Set<WeatherDataset>,
+        obfuscatedLat: Double,
+        obfuscatedLon: Double
+    ): String {
+        val datasetTag = datasets.map { it.name.lowercase(Locale.US) }.sorted().joinToString(",")
+        val params = "params={lat=$obfuscatedLat,lon=$obfuscatedLon,datasets=$datasetTag,tz=auto}"
+
+        return when (error) {
+            is HttpException -> {
+                val status = error.code()
+                val bodySnippet = runCatching {
+                    error.response()
+                        ?.errorBody()
+                        ?.string()
+                        ?.replace(whitespaceRegex, " ")
+                        ?.take(240)
+                }.getOrNull()
+                if (bodySnippet.isNullOrBlank()) {
+                    "http=$status $params"
+                } else {
+                    "http=$status $params body='$bodySnippet'"
+                }
+            }
+
+            is SerializationException -> {
+                "parse_error $params msg='${error.message.orEmpty().take(160)}'"
+            }
+
+            else -> params
+        }
+    }
+
+    private fun registerBackoff(locationKey: String): Long {
+        val state = locationBackoff.getOrPut(locationKey) { BackoffState() }
+        state.failureCount += 1
+        val backoffMs = WeatherRequestPolicy.backoffDelayForFailure(
+            failureCount = state.failureCount,
+            backoffStepsMs = backoffStepsMs
+        )
+        state.retryAfterMs = System.currentTimeMillis() + backoffMs
+        return backoffMs
+    }
+
     private fun startAutoUpdate() {
+        autoUpdateJob?.cancel()
         autoUpdateJob = viewModelScope.launch {
             while (true) {
-                delay(10000)
-                _uiState.value.selectedLocation?.let { fetchWeather(it) }
+                delay(backgroundRefreshIntervalMs)
+                val selected = _uiState.value.selectedLocation ?: continue
+                requestWeatherIfNeeded(
+                    location = selected,
+                    force = false,
+                    trigger = RefreshTrigger.BACKGROUND,
+                    animateResponse = false,
+                    bypassFollowModeGuard = false,
+                    showLoading = false
+                )
             }
         }
     }

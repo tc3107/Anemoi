@@ -64,7 +64,31 @@ fun WeatherDetailsSheet(
                 verticalArrangement = Arrangement.spacedBy(widgetGap)
             ) {
                 val selectedLoc = uiState.selectedLocation
-                val weather = selectedLoc?.let { uiState.weatherMap["${it.lat},${it.lon}"] }
+                val key = selectedLoc?.let { "${it.lat},${it.lon}" }
+                val staleServeWindowMs = 12 * 60 * 60 * 1000L
+                val now = System.currentTimeMillis()
+                val isSignatureMatch = key != null && uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
+
+                val rawWeather = if (isSignatureMatch) key?.let { uiState.weatherMap[it] } else null
+                val currentUpdatedAt = if (isSignatureMatch) key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L else 0L
+                val hourlyUpdatedAt = if (isSignatureMatch) key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L else 0L
+                val dailyUpdatedAt = if (isSignatureMatch) key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L else 0L
+
+                val currentUsable = rawWeather?.currentWeather != null &&
+                    currentUpdatedAt > 0L &&
+                    now - currentUpdatedAt <= staleServeWindowMs
+                val hourlyUsable = rawWeather?.hourly != null &&
+                    hourlyUpdatedAt > 0L &&
+                    now - hourlyUpdatedAt <= staleServeWindowMs
+                val dailyUsable = rawWeather?.daily != null &&
+                    dailyUpdatedAt > 0L &&
+                    now - dailyUpdatedAt <= staleServeWindowMs
+
+                val weather = rawWeather?.copy(
+                    currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+                    hourly = if (hourlyUsable) rawWeather.hourly else null,
+                    daily = if (dailyUsable) rawWeather.daily else null
+                )
                 
                 // Hourly Forecast Widget at the top - Now called directly to be taller and without title
                 item {

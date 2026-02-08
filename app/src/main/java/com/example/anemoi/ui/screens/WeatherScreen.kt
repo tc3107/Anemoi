@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.anemoi.ui.components.MapBackground
@@ -475,23 +476,69 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 
                                 if (pageLocation != null) {
                                     val key = "${pageLocation.lat},${pageLocation.lon}"
-                                    val weather = uiState.weatherMap[key]
-                                    val lastUpdate = uiState.updateTimeMap[key] ?: 0L
-                                    val isStale = lastUpdate != 0L && (System.currentTimeMillis() - lastUpdate > 60000)
+                                    val now = System.currentTimeMillis()
+                                    val staleServeWindowMs = 12 * 60 * 60 * 1000L
+                                    val grayThresholdMs = 60 * 60 * 1000L
+
+                                    val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
+                                    val rawWeather = if (isSignatureMatch) uiState.weatherMap[key] else null
+                                    val currentUpdatedAt = if (isSignatureMatch) uiState.currentUpdateTimeMap[key] ?: 0L else 0L
+                                    val hourlyUpdatedAt = if (isSignatureMatch) uiState.hourlyUpdateTimeMap[key] ?: 0L else 0L
+                                    val dailyUpdatedAt = if (isSignatureMatch) uiState.dailyUpdateTimeMap[key] ?: 0L else 0L
+
+                                    val currentUsable = rawWeather?.currentWeather != null &&
+                                        currentUpdatedAt > 0L &&
+                                        now - currentUpdatedAt <= staleServeWindowMs
+                                    val hourlyUsable = rawWeather?.hourly != null &&
+                                        hourlyUpdatedAt > 0L &&
+                                        now - hourlyUpdatedAt <= staleServeWindowMs
+                                    val dailyUsable = rawWeather?.daily != null &&
+                                        dailyUpdatedAt > 0L &&
+                                        now - dailyUpdatedAt <= staleServeWindowMs
+
+                                    val weather = rawWeather?.copy(
+                                        currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+                                        hourly = if (hourlyUsable) rawWeather.hourly else null,
+                                        daily = if (dailyUsable) rawWeather.daily else null
+                                    )
+
+                                    val useStaleColor = listOfNotNull(
+                                        if (currentUsable) now - currentUpdatedAt else null,
+                                        if (hourlyUsable) now - hourlyUpdatedAt else null,
+                                        if (dailyUsable) now - dailyUpdatedAt else null
+                                    ).any { it > grayThresholdMs }
+                                    val oldestUsableAgeMs = listOfNotNull(
+                                        if (currentUsable) now - currentUpdatedAt else null,
+                                        if (hourlyUsable) now - hourlyUpdatedAt else null,
+                                        if (dailyUsable) now - dailyUpdatedAt else null
+                                    ).maxOrNull() ?: 0L
                                     val isCurrentActivePage = (page == pagerState.currentPage)
                                     
                                     WeatherDisplay(
                                         weather = weather,
                                         tempUnit = uiState.tempUnit,
-                                        isStale = isStale,
                                         showDashesOverride = (page == 0 && !uiState.locationFound) || !isCurrentActivePage,
-                                        textAlpha = textAlpha
+                                        textAlpha = textAlpha,
+                                        useStaleColor = useStaleColor
                                     )
+                                    if (isCurrentActivePage && oldestUsableAgeMs > grayThresholdMs) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        val ageMinutes = oldestUsableAgeMs / 60000
+                                        val ageLabel = if (ageMinutes >= 60) {
+                                            "${ageMinutes / 60}h ${(ageMinutes % 60)}m"
+                                        } else {
+                                            "${ageMinutes}m"
+                                        }
+                                        Text(
+                                            text = "Last updated $ageLabel ago",
+                                            color = Color(0xFFB0B0B0).copy(alpha = 0.9f),
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 } else {
                                     WeatherDisplay(
                                         weather = null,
                                         tempUnit = uiState.tempUnit,
-                                        isStale = false,
                                         showDashesOverride = true,
                                         textAlpha = textAlpha
                                     )

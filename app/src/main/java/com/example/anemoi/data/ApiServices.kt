@@ -22,9 +22,9 @@ interface OpenMeteoService {
     suspend fun getWeather(
         @Query("latitude") lat: Double,
         @Query("longitude") lon: Double,
-        @Query("current_weather") currentWeather: Boolean = true,
-        @Query("hourly") hourly: String = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index",
-        @Query("daily") daily: String = "temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max",
+        @Query("current_weather") currentWeather: Boolean? = true,
+        @Query("hourly") hourly: String? = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index",
+        @Query("daily") daily: String? = "temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max",
         @Query("timezone") timezone: String = "auto"
     ): WeatherResponse
 }
