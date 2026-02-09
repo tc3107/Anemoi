@@ -24,11 +24,24 @@ fun DaylightGraph(
 ) {
     val density = LocalDensity.current
     val h = daylightHours.coerceIn(0.0, 24.0)
-    
+
+    fun roundToNearestFiveMinutes(minutes: Int): Int {
+        val clamped = minutes.coerceIn(0, 1439)
+        val rounded = ((clamped + 2) / 5) * 5
+        return if (rounded >= 1440) 1435 else rounded
+    }
+
     val isEphemerisAvailable = sunriseMinutes != null && sunsetMinutes != null
-    
-    val finalSunriseMinutes = sunriseMinutes ?: (720 - (h * 60) / 2).roundToInt()
-    val finalSunsetMinutes = sunsetMinutes ?: (720 + (h * 60) / 2).roundToInt()
+
+    val finalSunriseMinutes = roundToNearestFiveMinutes(
+        sunriseMinutes ?: (720 - (h * 60) / 2).roundToInt()
+    )
+    val finalSunsetMinutes = roundToNearestFiveMinutes(
+        sunsetMinutes ?: (720 + (h * 60) / 2).roundToInt()
+    )
+    val finalPeakMinutes = roundToNearestFiveMinutes(
+        ((finalSunriseMinutes + finalSunsetMinutes) / 2f).roundToInt()
+    )
 
     val amplitude = 0.125f // Amplitude
     
@@ -96,11 +109,14 @@ fun DaylightGraph(
         return String.format(Locale.getDefault(), "%02d:%02d", hrs, mins)
     }
 
-    val riseLabel = remember(sunriseMinutes) { 
-        if (sunriseMinutes != null) formatMinutes(sunriseMinutes) else "--:--" 
+    val riseLabel = remember(sunriseMinutes, finalSunriseMinutes) {
+        if (sunriseMinutes != null) formatMinutes(finalSunriseMinutes) else "--:--"
     }
-    val setLabel = remember(sunsetMinutes) { 
-        if (sunsetMinutes != null) formatMinutes(sunsetMinutes) else "--:--" 
+    val setLabel = remember(sunsetMinutes, finalSunsetMinutes) {
+        if (sunsetMinutes != null) formatMinutes(finalSunsetMinutes) else "--:--"
+    }
+    val peakLabel = remember(sunriseMinutes, sunsetMinutes, finalPeakMinutes) {
+        if (sunriseMinutes != null && sunsetMinutes != null) formatMinutes(finalPeakMinutes) else "--:--"
     }
 
     Box(
@@ -180,6 +196,8 @@ fun DaylightGraph(
 
             val riseX = mapX(xRise)
             val setX = mapX(xSet)
+            val peakX = (riseX + setX) / 2f
+            val peakY = mapY(amplitude)
             val crossingY = mapY(threshold)
             
             if (isEphemerisAvailable) {
@@ -201,8 +219,17 @@ fun DaylightGraph(
                     strokeWidth = 2.dp.toPx()
                 )
 
+                drawLine(
+                    color = Color.Gray.copy(alpha = 0.4f),
+                    start = Offset(peakX, peakY),
+                    end = Offset(peakX, height - bottomPadding),
+                    pathEffect = dottedEffect,
+                    strokeWidth = 2.dp.toPx()
+                )
+
                 drawCircle(color = Color.White.copy(alpha = 0.8f), radius = 4.dp.toPx(), center = Offset(riseX, crossingY))
                 drawCircle(color = Color.White.copy(alpha = 0.8f), radius = 4.dp.toPx(), center = Offset(setX, crossingY))
+                drawCircle(color = Color.White.copy(alpha = 0.8f), radius = 4.dp.toPx(), center = Offset(peakX, peakY))
             }
 
             drawContext.canvas.nativeCanvas.apply {
@@ -215,6 +242,9 @@ fun DaylightGraph(
                 }
                 drawText(riseLabel, riseX, topPadding - 4.dp.toPx(), paint)
                 drawText(setLabel, setX, topPadding - 4.dp.toPx(), paint)
+                if (isEphemerisAvailable) {
+                    drawText(peakLabel, peakX, height - 4.dp.toPx(), paint)
+                }
             }
 
             if (isEphemerisAvailable) {
