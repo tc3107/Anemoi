@@ -2,6 +2,7 @@ package com.example.anemoi.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -84,8 +85,47 @@ fun HourlyForecastWidget(
 
     val listState = rememberLazyListState()
     val currentIndex = remember(forecastItems) { forecastItems.indexOfFirst { it.isCurrent } }
+    val surfaceShape = RoundedCornerShape(28.dp)
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(surfaceShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.22f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.08f)
+                    )
+                ),
+                shape = surfaceShape
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.26f))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
+
         val itemWidth = 60.dp
         val contentPaddingStart = 10.dp
         val itemSpacing = 10.dp

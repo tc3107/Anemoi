@@ -1,6 +1,7 @@
 package com.example.anemoi.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -37,6 +39,7 @@ fun WeatherDetailsSheet(
         val horizontalPadding = 24.dp
         val availableWidth = maxWidth - (horizontalPadding * 2)
         val squareSize = (availableWidth - widgetGap) / 2
+        val handleSurfaceShape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Drag handle area (Fixed at the top of the sheet)
@@ -44,12 +47,39 @@ fun WeatherDetailsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(handleHeight)
+                    .clip(handleSurfaceShape)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.22f),
+                                Color.White.copy(alpha = 0.12f),
+                                Color.White.copy(alpha = 0.05f)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.32f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        ),
+                        shape = handleSurfaceShape
+                    )
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onHandleClick()
                     },
                 contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.White.copy(alpha = 0.26f))
+                )
                 Box(
                     modifier = Modifier
                         .width(48.dp)
@@ -65,7 +95,7 @@ fun WeatherDetailsSheet(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = horizontalPadding),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 180.dp),
+                contentPadding = PaddingValues(top = widgetGap, bottom = 180.dp),
                 verticalArrangement = Arrangement.spacedBy(widgetGap)
             ) {
                 val selectedLoc = uiState.selectedLocation
@@ -259,6 +289,7 @@ fun WeatherDetailsSheet(
                 }
             }
         }
+
     }
 }
 
@@ -273,14 +304,48 @@ fun DetailWidgetContainer(
     val labelLineHeight = 12.sp
     val density = LocalDensity.current
     val widgetTopToGraphInset = outerGap + with(density) { labelLineHeight.toDp() } + contentTopGap
+    val surfaceShape = RoundedCornerShape(28.dp)
     
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(28.dp))
-                .background(Color.White.copy(alpha = 0.1f))
-        )
+                .clip(surfaceShape)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.12f),
+                            Color.White.copy(alpha = 0.05f)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.32f),
+                            Color.White.copy(alpha = 0.08f)
+                        )
+                    ),
+                    shape = surfaceShape
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.26f))
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.12f))
+            )
+        }
         
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(modifier = Modifier.height(outerGap))

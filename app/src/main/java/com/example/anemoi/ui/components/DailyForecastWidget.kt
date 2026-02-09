@@ -3,6 +3,7 @@ package com.example.anemoi.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -90,6 +91,7 @@ fun DailyForecastWidget(
     }
     val precipitationLaneWidth = 34.dp
     val iconLaneWidth = 30.dp
+    val surfaceShape = RoundedCornerShape(28.dp)
 
     val globalMin = rows.mapNotNull { it.minTemp }.minOrNull()
     val globalMax = rows.mapNotNull { it.maxTemp }.maxOrNull()
@@ -102,9 +104,42 @@ fun DailyForecastWidget(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(Color.White.copy(alpha = 0.1f))
+            .clip(surfaceShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.22f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.08f)
+                    )
+                ),
+                shape = surfaceShape
+            )
     ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.26f))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
