@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -92,6 +94,7 @@ fun SearchBar(
         targetValue = if (expanded) 24.dp else 28.dp,
         label = "cornerAnimation"
     )
+    val surfaceShape = RoundedCornerShape(cornerSize)
 
     val shouldShowDropdown = isFocused && expanded && query.isNotEmpty() && suggestions.isNotEmpty()
     val dropdownVisibleState = remember { MutableTransitionState(false) }
@@ -116,7 +119,26 @@ fun SearchBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(cornerSize))
+            .clip(surfaceShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.22f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.08f)
+                    )
+                ),
+                shape = surfaceShape
+            )
             .animateContentSize(animationSpec = tween(300))
     ) {
         // Background blur and tint
@@ -125,6 +147,20 @@ fun SearchBar(
                 .matchParentSize()
                 .blur(blurStrength.dp)
                 .background(Color.White.copy(alpha = tintAlpha))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.26f))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.12f))
         )
 
         Column(modifier = Modifier.fillMaxWidth()) {
