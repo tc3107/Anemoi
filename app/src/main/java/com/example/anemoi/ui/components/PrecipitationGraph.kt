@@ -14,9 +14,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTextApi::class)
@@ -26,6 +29,7 @@ fun PrecipitationGraph(
     probabilities: List<Int>,
     precipitations: List<Double>,
     currentTimeIso: String?,
+    widgetTopToGraphTopInset: Dp = 24.dp,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -151,15 +155,18 @@ fun PrecipitationGraph(
                     // Apply Fade
                     val fadeWidth = 24.dp.toPx()
                     if (w > 0f) {
+                        val leftFadeStart = (l / w).coerceIn(0f, 1f)
+                        val leftFadeEnd = ((l + fadeWidth) / w).coerceIn(0f, 1f)
+                        val rightFadeStart = ((w - r - fadeWidth) / w).coerceIn(0f, 1f)
+                        val rightFadeEnd = ((w - r) / w).coerceIn(0f, 1f)
                         drawRect(
                             brush = Brush.horizontalGradient(
                                 colorStops = arrayOf(
-                                    0.0f to Color.Black,
-                                    ((l - 4.dp.toPx()) / w).coerceIn(0f, 1f) to Color.Black,
-                                    (l / w).coerceIn(0f, 1f) to Color.Transparent,
-                                    ((l + fadeWidth) / w).coerceIn(0f, 1f) to Color.Black,
-                                    ((w - r - fadeWidth) / w).coerceIn(0f, 1f) to Color.Black,
-                                    ((w - r) / w).coerceIn(0f, 1f) to Color.Transparent,
+                                    0.0f to Color.Transparent,
+                                    leftFadeStart to Color.Transparent,
+                                    leftFadeEnd to Color.Black,
+                                    rightFadeStart to Color.Black,
+                                    rightFadeEnd to Color.Transparent,
                                     1.0f to Color.Transparent
                                 )
                             ),
@@ -177,8 +184,7 @@ fun PrecipitationGraph(
                             val labelText = if (snappedMaxPrecip <= 2.0) String.format("%.1f", mmValue) else mmValue.roundToInt().toString()
                             textMeasurer.measure("$labelText mm", labelStyle)
                         }
-                        val maxLabelW = labels.maxOf { it.size.width }.toFloat()
-                        val alignRightX = 8.dp.toPx() + maxLabelW
+                        val alignRightX = l - 8.dp.toPx()
 
                         for (i in 0..4) {
                             val yPos = t + drawH - (i / 4.0f * drawH)
@@ -193,23 +199,71 @@ fun PrecipitationGraph(
                         }
                         val interpolatedProb = getInterpolatedProb(fraction)
                         // Measurements matching TemperatureGraph styling
-                        val probLayout = textMeasurer.measure(
-                            "${interpolatedProb.roundToInt()}%", 
-                            TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        )
-                        val timeLayout = textMeasurer.measure(
-                            String.format("%02d:%02d", (fraction * 24).toInt() % 24, ((fraction * 24 - (fraction * 24).toInt()) * 60).toInt()), 
-                            TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                        val probLabel = "${interpolatedProb.roundToInt()}%"
+                        val timeLabel = String.format(
+                            "%02d:%02d",
+                            (fraction * 24).toInt() % 24,
+                            ((fraction * 24 - (fraction * 24).toInt()) * 60).toInt()
                         )
 
-                        val xOffset = w - 16.dp.toPx()
-                        
-                        // Vertical positions
-                        val probY = -28.dp.toPx()
-                        val clockY = -4.dp.toPx()
-                        
-                        drawText(probLayout, topLeft = Offset(xOffset - probLayout.size.width, probY))
-                        drawText(timeLayout, topLeft = Offset(xOffset - timeLayout.size.width, clockY))
+                        val hudRightX = w - rightPaddingDp.toPx()
+                        val widgetTopY = -widgetTopToGraphTopInset.toPx()
+                        val topGridLineY = t
+                        val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
+                        val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
+                        val baseGap = 6.dp.toPx()
+                        val baseReadingTextSizeSp = 14f
+                        val baseClockTextSizeSp = 12f
+
+                        val baseProbStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = baseReadingTextSizeSp.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val baseClockStyle = TextStyle(
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = baseClockTextSizeSp.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        var probLayout = textMeasurer.measure(probLabel, baseProbStyle)
+                        var timeLayout = textMeasurer.measure(timeLabel, baseClockStyle)
+                        var readingClockGap = baseGap
+                        var combinedWidth = probLayout.size.width + readingClockGap + timeLayout.size.width
+                        var maxTextHeight = max(probLayout.size.height, timeLayout.size.height).toFloat()
+
+                        if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
+                            val scaleForHeight = availableHudHeight / maxTextHeight
+                            val scaleForWidth = availableHudWidth / combinedWidth
+                            val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
+                            val scaledProbStyle = baseProbStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
+                            val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
+                            probLayout = textMeasurer.measure(probLabel, scaledProbStyle)
+                            timeLayout = textMeasurer.measure(timeLabel, scaledClockStyle)
+                            readingClockGap = baseGap * scale
+                            combinedWidth = probLayout.size.width + readingClockGap + timeLayout.size.width
+                            maxTextHeight = max(probLayout.size.height, timeLayout.size.height).toFloat()
+                        }
+
+                        val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
+                        val rowStartX = hudRightX - combinedWidth
+                        val probTop = hudCenterY - (probLayout.size.height * 0.5f)
+                        val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
+
+                        drawText(
+                            probLayout,
+                            topLeft = Offset(
+                                rowStartX,
+                                probTop
+                            )
+                        )
+                        drawText(
+                            timeLayout,
+                            topLeft = Offset(
+                                rowStartX + probLayout.size.width + readingClockGap,
+                                clockTop
+                            )
+                        )
                     }
                 }
         ) {

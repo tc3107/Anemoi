@@ -22,6 +22,33 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Updated settings cog status tint to amber when weather warnings are present (error red still takes priority).
 - Deferred privacy setting application so obfuscation mode and grid distance are staged during editing and applied only when Settings is closed.
 
+## [0.4.0] - 2026-02-09
+
+### Added
+
+- Added a new full-width `10-DAY FORECAST` pull-up widget with 10 rows (`Today` + next 9 days), weekday labels, daily icons, min/max temperatures, and per-day range tracks normalized against the displayed 10-day min/max envelope.
+- Added daily forecast widget integration in the pull-up details flow and extended daily API/model support for `forecast_days=10`, `daily.weather_code`, and `daily.precipitation_probability_max`.
+
+### Changed
+
+- Reordered pull-up widgets so hourly forecast is second-to-last and 10-day forecast is last.
+- Refined daily forecast row layout: dynamic day-label width based on longest label, centered minimum temperature column, and centered icon lane between labels and minimums.
+- Updated daily range-track styling to match temperature-graph blues (`#81D4FA` -> `#0288D1`) with a highlighted segment that reveals the same gradient and keeps rounded ends.
+- Improved temperature and precipitation graph edge fading with monotonic masks to prevent dashed/line segments from visually reappearing past faded tips.
+- Updated graph HUD readouts:
+  - Added explicit temperature units in graph values/axis labels (`°C`, `°F`, `K`).
+  - Aligned temperature axis labels to the same right edge as precipitation `mm` labels.
+  - Reworked value/clock HUD positioning relative to widget header and top graph line.
+  - Moved value+clock to a single horizontal row (value left, clock right), with shared centerline.
+  - Added adaptive HUD text scaling and reduced clock text size for reliable fit.
+- Lowered UV and pressure gauges slightly within their cards by increasing content top gap.
+- Adjusted pressure dial geometry so its visual footprint matches UV dial size more closely.
+- Increased pressure dial visual weight (tick/indicator lengths and stroke widths) to better match UV dial thickness.
+
+### Fixed
+
+- Fixed weather warning persistence so warning state clears when not actively stale/expired (missing or inactive datasets no longer keep warning indicators latched).
+
 ## [0.3.0] - 2026-02-08
 
 ### Added

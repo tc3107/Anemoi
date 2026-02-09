@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.PressureUnit
 import java.util.Locale
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 
 @Composable
@@ -54,12 +55,17 @@ fun PressureDial(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val centerX = size.width / 2
             val centerY = size.height / 2
-            val radius = (size.minDimension / 2) - 2.dp.toPx()
-            
+
             val startAngle = 135f
             val totalSweep = 270f
             val numTicks = 44
-            val tickLength = 10.dp.toPx()
+            val tickLength = 12.dp.toPx()
+            val tickThickness = 2.8.dp.toPx()
+            val indicatorLength = 20.dp.toPx()
+            val indicatorThickness = 4.dp.toPx()
+            // Keep outermost rendered geometry inside the same visual bounds as other dials.
+            val maxProtrusion = max(tickLength, indicatorLength) / 2f
+            val radius = (size.minDimension / 2f) - maxProtrusion - 2.dp.toPx()
             
             val progress = if (currentPressure != null && minPressure != null && maxPressure != null) {
                 val range = maxPressure - minPressure
@@ -88,7 +94,7 @@ fun PressureDial(
                     color = tickColor,
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
-                    strokeWidth = 1.6.dp.toPx(),
+                    strokeWidth = tickThickness,
                     cap = StrokeCap.Butt
                 )
             }
@@ -96,7 +102,6 @@ fun PressureDial(
             // Current value indicator (only if available)
             if (currentAngle != null) {
                 val indicatorAngleRad = Math.toRadians(currentAngle.toDouble())
-                val indicatorLength = 18.dp.toPx()
                 
                 val indStartX = centerX + (radius - indicatorLength / 2) * cos(indicatorAngleRad).toFloat()
                 val indStartY = centerY + (radius - indicatorLength / 2) * sin(indicatorAngleRad).toFloat()
@@ -107,7 +112,7 @@ fun PressureDial(
                     color = Color.White,
                     start = Offset(indStartX, indStartY),
                     end = Offset(indEndX, indEndY),
-                    strokeWidth = 3.dp.toPx(),
+                    strokeWidth = indicatorThickness,
                     cap = StrokeCap.Round
                 )
             }

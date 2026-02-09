@@ -385,7 +385,7 @@ private fun buildFreshnessWarningLine(
     staleServeWindowMs: Long
 ): String? {
     if (!hasData || updatedAtMs <= 0L) {
-        return "$label missing."
+        return null
     }
 
     val ageMs = (nowMs - updatedAtMs).coerceAtLeast(0L)

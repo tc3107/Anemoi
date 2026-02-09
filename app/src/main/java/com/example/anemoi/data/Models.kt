@@ -56,6 +56,8 @@ data class DailyData(
     val time: List<String>,
     @SerialName("temperature_2m_max") val maxTemp: List<Double>,
     @SerialName("temperature_2m_min") val minTemp: List<Double>,
+    @SerialName("weather_code") val weatherCodes: List<Int>? = null,
+    @SerialName("precipitation_probability_max") val precipitationProbabilityMax: List<Double>? = null,
     val sunrise: List<String>? = null,
     val sunset: List<String>? = null,
     @SerialName("daylight_duration") val daylightDuration: List<Double>? = null,

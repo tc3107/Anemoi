@@ -13,10 +13,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.TempUnit
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTextApi::class)
@@ -27,6 +30,7 @@ fun TemperatureGraph(
     currentTemp: Double?,
     currentTimeIso: String?,
     tempUnit: TempUnit,
+    widgetTopToGraphTopInset: Dp = 24.dp,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -76,6 +80,23 @@ fun TemperatureGraph(
                (t3 - 2 * t2 + dt) * m1 + 
                (-2 * t3 + 3 * t2) * p2 + 
                (t3 - t2) * m2
+    }
+
+    fun toDisplayTemp(celsius: Double): Double {
+        return when (tempUnit) {
+            TempUnit.CELSIUS -> celsius
+            TempUnit.FAHRENHEIT -> celsius * 9 / 5 + 32
+            TempUnit.KELVIN -> celsius + 273.15
+        }
+    }
+
+    fun formatTempWithUnit(celsius: Double): String {
+        val displayValue = toDisplayTemp(celsius).roundToInt()
+        return when (tempUnit) {
+            TempUnit.CELSIUS -> "${displayValue}°C"
+            TempUnit.FAHRENHEIT -> "${displayValue}°F"
+            TempUnit.KELVIN -> "${displayValue}K"
+        }
     }
 
     val curF = remember(currentTimeIso) {
@@ -143,15 +164,18 @@ fun TemperatureGraph(
                     // Apply Fade to graph area tips
                     val fadeWidth = 24.dp.toPx()
                     if (w > 0f) {
+                        val leftFadeStart = (l / w).coerceIn(0f, 1f)
+                        val leftFadeEnd = ((l + fadeWidth) / w).coerceIn(0f, 1f)
+                        val rightFadeStart = ((w - r - fadeWidth) / w).coerceIn(0f, 1f)
+                        val rightFadeEnd = ((w - r) / w).coerceIn(0f, 1f)
                         drawRect(
                             brush = Brush.horizontalGradient(
                                 colorStops = arrayOf(
-                                    0.0f to Color.Black,
-                                    ((l - 4.dp.toPx()) / w).coerceIn(0f, 1f) to Color.Black,
-                                    (l / w).coerceIn(0f, 1f) to Color.Transparent,
-                                    ((l + fadeWidth) / w).coerceIn(0f, 1f) to Color.Black,
-                                    ((w - r - fadeWidth) / w).coerceIn(0f, 1f) to Color.Black,
-                                    ((w - r) / w).coerceIn(0f, 1f) to Color.Transparent,
+                                    0.0f to Color.Transparent,
+                                    leftFadeStart to Color.Transparent,
+                                    leftFadeEnd to Color.Black,
+                                    rightFadeStart to Color.Black,
+                                    rightFadeEnd to Color.Transparent,
                                     1.0f to Color.Transparent
                                 )
                             ),
@@ -176,10 +200,9 @@ fun TemperatureGraph(
                         val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
                         val labels = (0 until 6).map { i ->
                             val tempValue = yMin + (i / 5.0f * yRange)
-                            textMeasurer.measure("${tempValue.roundToInt()}°", labelStyle)
+                            textMeasurer.measure(formatTempWithUnit(tempValue), labelStyle)
                         }
-                        val maxLabelW = labels.maxOf { it.size.width }.toFloat()
-                        val alignRightX = 8.dp.toPx() + maxLabelW
+                        val alignRightX = l - 8.dp.toPx()
 
                         for (i in 0 until 6) {
                             val yPos = getYHUD(yMin + (i / 5.0f * yRange))
@@ -195,14 +218,68 @@ fun TemperatureGraph(
                         }
                         val interpolatedTemp = getInterpolatedTemp(fraction)
 
-                        val readingLabel = "${interpolatedTemp.roundToInt()}°"
-                        val readingLayout = textMeasurer.measure(readingLabel, TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold))
-                        drawText(readingLayout, topLeft = Offset(w - readingLayout.size.width - 16.dp.toPx(), -28.dp.toPx()))
-                        
+                        val readingLabel = formatTempWithUnit(interpolatedTemp)
                         val hr = (fraction * 24).toInt() % 24
                         val min = ((fraction * 24 - hr) * 60).toInt()
-                        val timeLayout = textMeasurer.measure(String.format("%02d:%02d", hr, min), TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp))
-                        drawText(timeLayout, topLeft = Offset(w - timeLayout.size.width - 16.dp.toPx(), -4.dp.toPx()))
+                        val clockLabel = String.format("%02d:%02d", hr, min)
+                        val hudRightX = w - rightPaddingDp.toPx()
+                        val widgetTopY = -widgetTopToGraphTopInset.toPx()
+                        val topGridLineY = t
+                        val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
+                        val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
+                        val baseGap = 6.dp.toPx()
+                        val baseReadingTextSizeSp = 14f
+                        val baseClockTextSizeSp = 12f
+
+                        val baseReadingStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = baseReadingTextSizeSp.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val baseClockStyle = TextStyle(
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = baseClockTextSizeSp.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        var readingLayout = textMeasurer.measure(readingLabel, baseReadingStyle)
+                        var timeLayout = textMeasurer.measure(clockLabel, baseClockStyle)
+                        var readingClockGap = baseGap
+                        var combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                        var maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+
+                        if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
+                            val scaleForHeight = availableHudHeight / maxTextHeight
+                            val scaleForWidth = availableHudWidth / combinedWidth
+                            val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
+                            val scaledReadingStyle = baseReadingStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
+                            val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
+                            readingLayout = textMeasurer.measure(readingLabel, scaledReadingStyle)
+                            timeLayout = textMeasurer.measure(clockLabel, scaledClockStyle)
+                            readingClockGap = baseGap * scale
+                            combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                            maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+                        }
+
+                        val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
+                        val rowStartX = hudRightX - combinedWidth
+                        val readingTop = hudCenterY - (readingLayout.size.height * 0.5f)
+                        val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
+
+                        drawText(
+                            readingLayout,
+                            topLeft = Offset(
+                                rowStartX,
+                                readingTop
+                            )
+                        )
+                        drawText(
+                            timeLayout,
+                            topLeft = Offset(
+                                rowStartX + readingLayout.size.width + readingClockGap,
+                                clockTop
+                            )
+                        )
                     }
                 }
         ) {

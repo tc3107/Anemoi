@@ -266,7 +266,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val backoffStepsMs = longArrayOf(5_000L, 15_000L, 60_000L, 5 * 60_000L)
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index"
-    private val dailyFields = "temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max"
+    private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
     private val staleDataError = "Weather cache is missing or older than 12 hours"
 
     private val defaultLocation = LocationItem(

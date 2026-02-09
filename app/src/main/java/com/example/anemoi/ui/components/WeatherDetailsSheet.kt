@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -93,20 +94,6 @@ fun WeatherDetailsSheet(
                     daily = if (dailyUsable) rawWeather.daily else null
                 )
                 
-                // Hourly Forecast Widget at the top - Now called directly to be taller and without title
-                item {
-                    HourlyForecastWidget(
-                        times = weather?.hourly?.time ?: emptyList(),
-                        weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
-                        temperatures = weather?.hourly?.temperatures ?: emptyList(),
-                        tempUnit = uiState.tempUnit,
-                        isExpanded = isExpanded,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(115.dp)
-                    )
-                }
-
                 val daily = weather?.daily
                 val h = daily?.daylightDuration?.firstOrNull()?.div(3600.0) ?: 12.0
                 
@@ -140,13 +127,14 @@ fun WeatherDetailsSheet(
                             .fillMaxWidth()
                             .height(squareSize),
                         contentTopGap = 0.dp
-                    ) {
+                    ) { widgetTopToGraphInset ->
                         TemperatureGraph(
                             times = weather?.hourly?.time ?: emptyList(),
                             temperatures = weather?.hourly?.temperatures ?: emptyList(),
                             currentTemp = weather?.currentWeather?.temperature,
                             currentTimeIso = weather?.currentWeather?.time,
                             tempUnit = uiState.tempUnit,
+                            widgetTopToGraphTopInset = widgetTopToGraphInset,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -159,12 +147,13 @@ fun WeatherDetailsSheet(
                             .fillMaxWidth()
                             .height(squareSize),
                         contentTopGap = 0.dp
-                    ) {
+                    ) { widgetTopToGraphInset ->
                         PrecipitationGraph(
                             times = weather?.hourly?.time ?: emptyList(),
                             probabilities = weather?.hourly?.precipitationProbability ?: emptyList(),
                             precipitations = weather?.hourly?.precipitation ?: emptyList(),
                             currentTimeIso = weather?.currentWeather?.time,
+                            widgetTopToGraphTopInset = widgetTopToGraphInset,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -178,8 +167,8 @@ fun WeatherDetailsSheet(
                         DetailWidgetContainer(
                             label = "UV INDEX",
                             modifier = Modifier.size(squareSize),
-                            contentTopGap = 0.dp
-                        ) {
+                            contentTopGap = 8.dp
+                        ) { _ ->
                             val currentTimeStr = weather?.currentWeather?.time ?: ""
                             val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
                             val currentUV = if (currentHourIdx != -1 && weather?.hourly?.uvIndex != null && currentHourIdx < weather.hourly.uvIndex.size) {
@@ -195,8 +184,8 @@ fun WeatherDetailsSheet(
                         DetailWidgetContainer(
                             label = "PRESSURE",
                             modifier = Modifier.size(squareSize),
-                            contentTopGap = 0.dp
-                        ) {
+                            contentTopGap = 8.dp
+                        ) { _ ->
                             val hourlyPressures = weather?.hourly?.pressures ?: emptyList()
                             val currentTimeStr = weather?.currentWeather?.time ?: ""
                             val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
@@ -233,7 +222,7 @@ fun WeatherDetailsSheet(
                             .fillMaxWidth()
                             .height(squareSize),
                         contentTopGap = 0.dp
-                    ) {
+                    ) { _ ->
                         DaylightGraph(
                             daylightHours = h,
                             nowMinutes = locationMinutes,
@@ -242,6 +231,30 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+                }
+
+                item {
+                    HourlyForecastWidget(
+                        times = weather?.hourly?.time ?: emptyList(),
+                        weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
+                        temperatures = weather?.hourly?.temperatures ?: emptyList(),
+                        tempUnit = uiState.tempUnit,
+                        isExpanded = isExpanded,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(115.dp)
+                    )
+                }
+
+                item {
+                    DailyForecastWidget(
+                        dates = weather?.daily?.time ?: emptyList(),
+                        weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
+                        minTemperatures = weather?.daily?.minTemp ?: emptyList(),
+                        maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
+                        tempUnit = uiState.tempUnit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -253,9 +266,12 @@ fun DetailWidgetContainer(
     label: String,
     modifier: Modifier = Modifier,
     contentTopGap: Dp = 8.dp,
-    content: @Composable BoxScope.() -> Unit
+    content: @Composable BoxScope.(widgetTopToGraphInset: Dp) -> Unit
 ) {
     val outerGap = 12.dp 
+    val labelLineHeight = 12.sp
+    val density = LocalDensity.current
+    val widgetTopToGraphInset = outerGap + with(density) { labelLineHeight.toDp() } + contentTopGap
     
     Box(modifier = modifier) {
         Box(
@@ -271,13 +287,14 @@ fun DetailWidgetContainer(
                 text = label,
                 color = Color.White.copy(alpha = 0.4f),
                 fontSize = 10.sp,
+                lineHeight = labelLineHeight,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Spacer(modifier = Modifier.height(contentTopGap))
             Box(
                 modifier = Modifier.weight(1f),
-                content = content
+                content = { content(widgetTopToGraphInset) }
             )
             Spacer(modifier = Modifier.height(outerGap))
         }

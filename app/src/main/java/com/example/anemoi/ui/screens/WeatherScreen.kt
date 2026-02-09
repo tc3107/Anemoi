@@ -706,7 +706,7 @@ private fun hasFreshnessWarning(
     staleServeWindowMs: Long
 ): Boolean {
     if (!hasData || updatedAtMs <= 0L) {
-        return true
+        return false
     }
     val ageMs = (nowMs - updatedAtMs).coerceAtLeast(0L)
     return ageMs > thresholdMs || ageMs > staleServeWindowMs
