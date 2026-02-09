@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="com.example.anemoi.widget.WeatherWidgetConfigureActivity"
+    android:description="@string/widget_weather_description"
+    android:initialLayout="@layout/widget_weather"
+    android:minHeight="72dp"
+    android:minWidth="110dp"
+    android:minResizeHeight="72dp"
+    android:minResizeWidth="110dp"
+    android:resizeMode="horizontal"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

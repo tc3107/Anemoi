@@ -22,6 +22,25 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Updated settings cog status tint to amber when weather warnings are present (error red still takes priority).
 - Deferred privacy setting application so obfuscation mode and grid distance are staged during editing and applied only when Settings is closed.
 
+## [0.5.0] - 2026-02-09
+
+### Added
+
+- Added a home-screen weather widget with a configuration flow that lets each widget instance target Current Location or a saved location.
+- Added responsive widget layouts for compact and wide widths, including current conditions, feels-like, high/low, and a 3-hour outlook.
+- Added widget provider/configuration registration and resources (`appwidget-provider`, widget layouts, strings, and outline drawable).
+- Added custom location display names (`customName`) with organizer rename/revert controls.
+
+### Changed
+
+- Updated organizer and search surfaces to display custom location names while preserving the original location name for reference.
+- Updated location identity handling in organizer interactions to key by coordinates so rename operations do not break drag/favorite actions.
+- Updated app launch handling so widget taps can deep-link to a specific location and open that location in weather mode.
+- Updated weather view-model flows to persist renamed display names across favorites/selected/live/search state and sync widget selections.
+- Updated widget refresh triggers so widget content is refreshed after relevant app-state changes (location selection, live location updates, temperature unit changes, rename events, and successful weather fetches).
+- Updated request gating to use a longer per-location minimum interval for background refresh triggers (`15m`) while keeping interaction/startup behavior unchanged.
+- Increased stale-warning evaluation cadence from 60s to 15s.
+
 ## [0.4.0] - 2026-02-09
 
 ### Added

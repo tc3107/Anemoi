@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -36,6 +37,7 @@ fun OrganizerOverlay(
     favorites: List<LocationItem>,
     onReorder: (Int, Int) -> Unit,
     onToggleFavorite: (LocationItem) -> Unit,
+    onRenameLocation: (LocationItem, String?) -> Unit,
     onSelect: (LocationItem) -> Unit,
     onClose: () -> Unit,
     blurStrength: Float,
@@ -47,13 +49,12 @@ fun OrganizerOverlay(
     
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    var renameTarget by remember { mutableStateOf<LocationItem?>(null) }
+    var renameDraft by remember { mutableStateOf("") }
     
     LaunchedEffect(favorites) {
         if (draggingIndex == null) {
-            val favKeys = favorites.map { "${it.name}_${it.lat}_${it.lon}" }
-            val itemKeys = items.map { "${it.name}_${it.lat}_${it.lon}" }
-            
-            if (favKeys != itemKeys) {
+            if (favorites != items.toList()) {
                 items.clear()
                 items.addAll(favorites)
             }
@@ -138,7 +139,7 @@ fun OrganizerOverlay(
                         },
                     userScrollEnabled = draggingIndex == null
                 ) {
-                    itemsIndexed(items, key = { _, item -> "${item.name}_${item.lat}_${item.lon}" }) { index, location ->
+                    itemsIndexed(items, key = { _, item -> "${item.lat}_${item.lon}" }) { index, location ->
                         val isDragging = draggingIndex == index
                         
                         Card(
@@ -176,7 +177,7 @@ fun OrganizerOverlay(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = location.name,
+                                    text = location.displayName,
                                     color = Color.White,
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
@@ -184,10 +185,24 @@ fun OrganizerOverlay(
                                     fontSize = 16.sp
                                 )
                                 IconButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        renameTarget = location
+                                        renameDraft = location.displayName
+                                    },
+                                    enabled = draggingIndex == null
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Rename",
+                                        tint = Color.White
+                                    )
+                                }
+                                IconButton(
                                     onClick = { 
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onToggleFavorite(location)
-                                        val itemIdx = items.indexOfFirst { it.name == location.name && it.lat == location.lat && it.lon == location.lon }
+                                        val itemIdx = items.indexOfFirst { it.lat == location.lat && it.lon == location.lon }
                                         if (itemIdx != -1) {
                                             items[itemIdx] = items[itemIdx].copy(isFavorite = !items[itemIdx].isFavorite)
                                         }
@@ -223,5 +238,54 @@ fun OrganizerOverlay(
                 }
             }
         }
+    }
+
+    renameTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename location") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        singleLine = true,
+                        label = { Text("Display name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Original: ${target.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRenameLocation(target, renameDraft)
+                        renameTarget = null
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            onRenameLocation(target, null)
+                            renameTarget = null
+                        }
+                    ) {
+                        Text("Revert")
+                    }
+                    TextButton(onClick = { renameTarget = null }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
     }
 }

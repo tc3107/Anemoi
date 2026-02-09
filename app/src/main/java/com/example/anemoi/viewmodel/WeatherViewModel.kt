@@ -31,6 +31,8 @@ import com.example.anemoi.data.WeatherResponse
 import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.obfuscateLocation
+import com.example.anemoi.widget.WidgetLocationStore
+import com.example.anemoi.widget.WeatherWidgetProvider
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -251,11 +253,12 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val hourlyFreshnessMs = 20 * 60 * 1000L
     private val dailyFreshnessMs = 2 * 60 * 60 * 1000L
     private val staleServeWindowMs = 12 * 60 * 60 * 1000L
-    private val staleCheckIntervalMs = 60 * 1000L
+    private val staleCheckIntervalMs = 15 * 1000L
     private val backgroundRefreshIntervalMs = 60 * 60 * 1000L
     private val perLocationGateBypassDistanceKm = 15.0
 
     private val locationMinRequestIntervalMs = 60 * 1000L
+    private val backgroundMinRequestIntervalMs = 15 * 60 * 1000L
     private val globalRequestWindowMs = 60 * 1000L
     private val globalRequestLimitPerWindow = 30
 
@@ -707,6 +710,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             applicationContext.dataStore.edit { settings ->
                 settings[lastLocationKey] = json.encodeToString(location)
             }
+            WeatherWidgetProvider.requestUpdate(applicationContext)
         }
     }
 
@@ -731,6 +735,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     settings.remove(liveLocationKey)
                 }
             }
+            WeatherWidgetProvider.requestUpdate(applicationContext)
         }
     }
 
@@ -809,6 +814,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             applicationContext.dataStore.edit { settings ->
                 settings[tempUnitKey] = unit.name
             }
+            WeatherWidgetProvider.requestUpdate(applicationContext)
         }
     }
 
@@ -1274,12 +1280,15 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private fun publishSuggestions(suggestions: List<CachedSuggestion>) {
         _uiState.update { state ->
             val mapped = suggestions.map { suggestion ->
-                val isFav = state.favorites.any { favorite -> favorite.name == suggestion.displayName }
+                val favoriteMatch = state.favorites.firstOrNull { favorite ->
+                    favorite.name == suggestion.displayName
+                }
                 LocationItem(
                     name = suggestion.displayName,
                     lat = suggestion.lat,
                     lon = suggestion.lon,
-                    isFavorite = isFav
+                    isFavorite = favoriteMatch != null,
+                    customName = favoriteMatch?.customName
                 )
             }
             state.copy(suggestions = mapped)
@@ -1312,10 +1321,45 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    fun openLocationFromWidget(lat: Double, lon: Double, context: Context) {
+        val targetKey = "$lat,$lon"
+        val stateSnapshot = _uiState.value
+
+        val locationFromState = buildList {
+            addAll(stateSnapshot.favorites)
+            stateSnapshot.searchedLocation?.let(::add)
+            stateSnapshot.selectedLocation?.let(::add)
+            stateSnapshot.lastLiveLocation?.let(::add)
+            lastLocation?.let(::add)
+        }.firstOrNull { locationKey(it) == targetKey }
+
+        val targetLocation = locationFromState ?: LocationItem(
+            name = "Widget location",
+            lat = lat,
+            lon = lon
+        )
+
+        if (stateSnapshot.isFollowMode) {
+            setFollowMode(false, context)
+        }
+
+        onLocationSelected(targetLocation, isManualSearch = true)
+    }
+
     fun onLocationSelected(location: LocationItem, isManualSearch: Boolean = true) {
         addLog("Location selected: ${location.name} (${location.lat}, ${location.lon})")
-        val updatedLocation = location.copy(lastViewed = System.currentTimeMillis())
-        val isFavorite = _uiState.value.favorites.any { it.name == location.name }
+        val stateSnapshot = _uiState.value
+        val targetKey = locationKey(location)
+        val existingCustomName = stateSnapshot.favorites.firstOrNull { locationKey(it) == targetKey }?.customName
+            ?: stateSnapshot.selectedLocation?.takeIf { locationKey(it) == targetKey }?.customName
+            ?: stateSnapshot.searchedLocation?.takeIf { locationKey(it) == targetKey }?.customName
+            ?: stateSnapshot.lastLiveLocation?.takeIf { locationKey(it) == targetKey }?.customName
+
+        val updatedLocation = location.copy(
+            lastViewed = System.currentTimeMillis(),
+            customName = location.customName ?: existingCustomName
+        )
+        val isFavorite = stateSnapshot.favorites.any { it.name == location.name }
 
         lastLocation = updatedLocation
         _uiState.update { state ->
@@ -1388,6 +1432,88 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    fun renameLocationDisplayName(location: LocationItem, candidateDisplayName: String?) {
+        val targetKey = locationKey(location)
+        val normalizedCustomName = candidateDisplayName
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && it != location.name }
+
+        var didChange = false
+        _uiState.update { state ->
+            fun updateIfMatching(item: LocationItem?): LocationItem? {
+                if (item == null) return null
+                if (locationKey(item) != targetKey) return item
+                val updated = item.copy(customName = normalizedCustomName)
+                if (updated != item) {
+                    didChange = true
+                }
+                return updated
+            }
+
+            val updatedFavorites = state.favorites.map { favorite ->
+                if (locationKey(favorite) != targetKey) return@map favorite
+                val updated = favorite.copy(customName = normalizedCustomName)
+                if (updated != favorite) {
+                    didChange = true
+                }
+                updated
+            }
+
+            val updatedSuggestions = state.suggestions.map { suggestion ->
+                if (locationKey(suggestion) != targetKey) return@map suggestion
+                val updated = suggestion.copy(customName = normalizedCustomName)
+                if (updated != suggestion) {
+                    didChange = true
+                }
+                updated
+            }
+
+            state.copy(
+                favorites = updatedFavorites,
+                suggestions = updatedSuggestions,
+                selectedLocation = updateIfMatching(state.selectedLocation),
+                searchedLocation = updateIfMatching(state.searchedLocation),
+                lastLiveLocation = updateIfMatching(state.lastLiveLocation)
+            )
+        }
+
+        if (!didChange) return
+
+        val updatedState = _uiState.value
+        lastLocation = lastLocation?.let { current ->
+            if (locationKey(current) == targetKey) {
+                current.copy(customName = normalizedCustomName)
+            } else {
+                current
+            }
+        }
+        addLog(
+            "Display name updated for ${location.name}: " +
+                (normalizedCustomName ?: "<reverted>")
+        )
+
+        if (updatedState.favorites.any { locationKey(it) == targetKey }) {
+            saveFavorites(updatedState.favorites)
+        }
+        updatedState.selectedLocation
+            ?.takeIf { locationKey(it) == targetKey }
+            ?.let(::saveLastLocation)
+
+        if (updatedState.searchedLocation?.let { locationKey(it) == targetKey } == true) {
+            saveSearchedLocation(updatedState.searchedLocation)
+        }
+        if (updatedState.lastLiveLocation?.let { locationKey(it) == targetKey } == true) {
+            saveLiveLocation(updatedState.lastLiveLocation)
+        }
+
+        WidgetLocationStore.updateCustomNameForLocation(
+            context = applicationContext,
+            targetLocation = location,
+            customName = normalizedCustomName
+        )
+        WeatherWidgetProvider.requestUpdate(applicationContext)
+    }
+
     private fun fetchWeather(
         location: LocationItem,
         force: Boolean = false,
@@ -1456,6 +1582,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val gateDecision = evaluateRequestGate(
             locationKey = key,
             now = now,
+            trigger = trigger,
             bypassLocationGate = bypassLocationGate
         )
         if (!gateDecision.isAllowed) {
@@ -1513,9 +1640,16 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private fun evaluateRequestGate(
         locationKey: String,
         now: Long,
+        trigger: RefreshTrigger,
         bypassLocationGate: Boolean = false
     ): RequestGateDecision {
         pruneRequestHistories(now)
+
+        val minIntervalMs = when (trigger) {
+            RefreshTrigger.BACKGROUND -> backgroundMinRequestIntervalMs
+            RefreshTrigger.USER_INTERACTION,
+            RefreshTrigger.STARTUP -> locationMinRequestIntervalMs
+        }
 
         val history = locationRequestHistory[locationKey]
         val snapshot = RequestGateSnapshot(
@@ -1525,7 +1659,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             globalOldestRequestAtMs = globalRequestHistory.firstOrNull()
         )
         val config = RequestGateConfig(
-            locationMinRequestIntervalMs = locationMinRequestIntervalMs,
+            locationMinRequestIntervalMs = minIntervalMs,
             globalRequestWindowMs = globalRequestWindowMs,
             globalRequestLimitPerWindow = globalRequestLimitPerWindow
         )
@@ -1589,7 +1723,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             val prunedLocation = WeatherRequestPolicy.pruneTimestampsWithinWindow(
                 timestamps = entry.value,
                 nowMs = now,
-                windowMs = locationMinRequestIntervalMs
+                windowMs = max(locationMinRequestIntervalMs, backgroundMinRequestIntervalMs)
             )
             if (prunedLocation.isEmpty()) {
                 iterator.remove()
@@ -1773,6 +1907,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             }.onFailure { persistError ->
                 addLog("Cache persist failed after fetch: ${persistError.message}")
             }
+            WeatherWidgetProvider.requestUpdate(applicationContext)
             addLog("Weather updated for ${location.name}")
             true
         } catch (e: Exception) {

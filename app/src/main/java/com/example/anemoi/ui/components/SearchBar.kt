@@ -172,7 +172,7 @@ fun SearchBar(
                         ) {
                             if (query.isEmpty()) {
                                 Text(
-                                    text = if (isFollowMode) "Current Location" else (selectedLocation?.name ?: "Search location..."),
+                                    text = if (isFollowMode) "Current Location" else (selectedLocation?.displayName ?: "Search location..."),
                                     color = Color.White.copy(alpha = 0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -241,7 +241,7 @@ fun SearchBar(
                                     )
                                 }
                                 Text(
-                                    text = location.name,
+                                    text = location.displayName,
                                     color = Color.White,
                                     fontSize = 14.sp,
                                     maxLines = 1,

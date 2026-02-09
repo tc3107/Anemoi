@@ -1,11 +1,11 @@
 package com.example.anemoi
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.anemoi.ui.MainContent
 import com.example.anemoi.ui.theme.AnemoiTheme
 import com.example.anemoi.viewmodel.WeatherViewModel
@@ -14,6 +14,13 @@ import org.osmdroid.config.Configuration
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    private lateinit var weatherViewModel: WeatherViewModel
+
+    companion object {
+        const val EXTRA_WIDGET_LOCATION_LAT = "com.example.anemoi.extra.WIDGET_LOCATION_LAT"
+        const val EXTRA_WIDGET_LOCATION_LON = "com.example.anemoi.extra.WIDGET_LOCATION_LON"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -30,18 +37,40 @@ class MainActivity : ComponentActivity() {
         val cacheDir = File(cacheDir, "osmdroid_tiles")
         if (!cacheDir.exists()) cacheDir.mkdirs()
         conf.osmdroidTileCache = cacheDir
+
+        weatherViewModel = ViewModelProvider(
+            this,
+            WeatherViewModelFactory(applicationContext)
+        )[WeatherViewModel::class.java]
+        handleWidgetLocationIntent(intent)
         
         enableEdgeToEdge()
         
         setContent {
-            val context = LocalContext.current
-            val viewModel: WeatherViewModel = viewModel(
-                factory = WeatherViewModelFactory(context.applicationContext)
-            )
-            
             AnemoiTheme {
-                MainContent(viewModel)
+                MainContent(weatherViewModel)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetLocationIntent(intent)
+    }
+
+    private fun handleWidgetLocationIntent(intent: Intent?) {
+        val launchIntent = intent ?: return
+        if (!launchIntent.hasExtra(EXTRA_WIDGET_LOCATION_LAT) || !launchIntent.hasExtra(EXTRA_WIDGET_LOCATION_LON)) {
+            return
+        }
+
+        val lat = launchIntent.getDoubleExtra(EXTRA_WIDGET_LOCATION_LAT, Double.NaN)
+        val lon = launchIntent.getDoubleExtra(EXTRA_WIDGET_LOCATION_LON, Double.NaN)
+        if (lat.isNaN() || lon.isNaN()) {
+            return
+        }
+
+        weatherViewModel.openLocationFromWidget(lat, lon, applicationContext)
     }
 }

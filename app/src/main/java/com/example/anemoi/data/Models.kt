@@ -70,8 +70,12 @@ data class LocationItem(
     val lat: Double,
     val lon: Double,
     val isFavorite: Boolean = false,
-    val lastViewed: Long = 0L
-)
+    val lastViewed: Long = 0L,
+    val customName: String? = null
+) {
+    val displayName: String
+        get() = customName?.trim()?.takeIf { it.isNotEmpty() } ?: name
+}
 
 enum class TempUnit {
     CELSIUS, FAHRENHEIT, KELVIN

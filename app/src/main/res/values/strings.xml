@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">Anemoi</string>
+    <string name="widget_weather_description">Selected location and current temperature</string>
+    <string name="widget_location_placeholder">Select location</string>
+    <string name="widget_temp_placeholder">--°</string>
+    <string name="widget_feels_like_placeholder">Feels like --°</string>
+    <string name="widget_feels_like_format">Feels like %1$s</string>
+    <string name="widget_updated_placeholder">--</string>
+    <string name="widget_updated_now_short">now</string>
+    <string name="widget_updated_now_long">Updated now</string>
+    <string name="widget_updated_long_format">Updated %1$s ago</string>
+    <string name="widget_current_location_option">Current Location</string>
+    <string name="widget_config_title">Choose widget location</string>
+    <string name="widget_config_no_locations">Open the app and save a location first.</string>
 </resources>

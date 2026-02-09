@@ -673,6 +673,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     favorites = favorites,
                     onReorder = viewModel::reorderFavorites,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    onRenameLocation = viewModel::renameLocationDisplayName,
                     onSelect = { location ->
                         viewModel.onLocationSelected(location)
                         viewModel.toggleOrganizerMode(false)
