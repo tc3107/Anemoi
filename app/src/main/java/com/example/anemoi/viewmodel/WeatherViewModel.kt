@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
+import android.location.Location
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
@@ -252,6 +253,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val staleServeWindowMs = 12 * 60 * 60 * 1000L
     private val staleCheckIntervalMs = 60 * 1000L
     private val backgroundRefreshIntervalMs = 60 * 60 * 1000L
+    private val perLocationGateBypassDistanceKm = 15.0
 
     private val locationMinRequestIntervalMs = 60 * 1000L
     private val globalRequestWindowMs = 60 * 1000L
@@ -300,49 +302,14 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun refreshActiveRequestSignature() {
-        var changed = false
-        var signature = ""
         _uiState.update { state ->
-            signature = buildRequestSignature(state)
+            val signature = buildRequestSignature(state)
             if (signature == state.activeRequestSignature) {
                 state
             } else {
-                changed = true
                 state.copy(activeRequestSignature = signature)
             }
         }
-        if (changed) {
-            pruneCachesForSignatureMismatch(signature)
-        }
-    }
-
-    private fun pruneCachesForSignatureMismatch(activeSignature: String) {
-        val state = _uiState.value
-        val keysToRemove = state.cacheSignatureMap.filterValues { cached ->
-            cached != activeSignature
-        }.keys
-        if (keysToRemove.isEmpty()) return
-
-        _uiState.update { current ->
-            current.copy(
-                weatherMap = current.weatherMap - keysToRemove,
-                updateTimeMap = current.updateTimeMap - keysToRemove,
-                currentUpdateTimeMap = current.currentUpdateTimeMap - keysToRemove,
-                hourlyUpdateTimeMap = current.hourlyUpdateTimeMap - keysToRemove,
-                dailyUpdateTimeMap = current.dailyUpdateTimeMap - keysToRemove,
-                cacheSignatureMap = current.cacheSignatureMap - keysToRemove,
-                pageStatuses = current.pageStatuses - keysToRemove
-            )
-        }
-        keysToRemove.forEach { locationKey ->
-            val inFlightKeys = inFlightWeatherRequests.keys.filter { requestKey ->
-                requestKey.startsWith("$locationKey|")
-            }
-            inFlightKeys.forEach { requestKey ->
-                inFlightWeatherRequests.remove(requestKey)
-            }
-        }
-        persistCachesSoon()
     }
 
     private fun loadSettings() {
@@ -554,6 +521,12 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             while (true) {
                 delay(staleCheckIntervalMs)
                 refreshActiveRequestSignature()
+                runCatching {
+                    refreshStaleWeatherForTrackedLocations()
+                }.onFailure { error ->
+                    addLog("Background stale refresh failed: ${error.message}")
+                }
+
                 val now = System.currentTimeMillis()
                 pruneExpiredWeatherEntries(now)
 
@@ -572,6 +545,63 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 }
             }
         }
+    }
+
+    private suspend fun refreshStaleWeatherForTrackedLocations() {
+        val trackedLocations = trackedLocationsForStalenessRefresh()
+        if (trackedLocations.isEmpty()) return
+
+        trackedLocations.forEach { location ->
+            requestWeatherIfNeeded(
+                location = location,
+                force = false,
+                trigger = RefreshTrigger.BACKGROUND,
+                animateResponse = false,
+                bypassFollowModeGuard = false,
+                showLoading = false,
+                logNoFetch = false
+            )
+        }
+    }
+
+    private fun trackedLocationsForStalenessRefresh(
+        state: WeatherUiState = _uiState.value
+    ): List<LocationItem> {
+        val locationsByKey = linkedMapOf<String, LocationItem>()
+
+        fun add(location: LocationItem?) {
+            if (location == null) return
+            locationsByKey.putIfAbsent(locationKey(location), location)
+        }
+
+        add(state.selectedLocation)
+        add(state.searchedLocation)
+        add(state.lastLiveLocation)
+        state.favorites.forEach(::add)
+
+        state.weatherMap.keys.forEach { key ->
+            if (locationsByKey.containsKey(key)) {
+                return@forEach
+            }
+            parseLocationKey(key)?.let { parsed ->
+                locationsByKey[key] = parsed
+            }
+        }
+
+        return locationsByKey.values.toList()
+    }
+
+    private fun parseLocationKey(key: String): LocationItem? {
+        val parts = key.split(",", limit = 2)
+        if (parts.size != 2) return null
+
+        val lat = parts[0].trim().toDoubleOrNull() ?: return null
+        val lon = parts[1].trim().toDoubleOrNull() ?: return null
+        return LocationItem(
+            name = "Cached location",
+            lat = lat,
+            lon = lon
+        )
     }
 
     private fun isSignatureMatchForLocation(
@@ -594,7 +624,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private fun hasAnyUsableData(key: String, now: Long): Boolean {
         val state = _uiState.value
-        val weather = weatherForActiveSignature(key, state) ?: return false
+        val weather = state.weatherMap[key] ?: return false
 
         val currentUsable = isDatasetUsable(
             hasData = weather.currentWeather != null,
@@ -876,23 +906,54 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     fun setObfuscationMode(mode: ObfuscationMode) {
-        addLog("Obfuscation mode set to: $mode")
-        _uiState.update { it.copy(obfuscationMode = mode) }
-        refreshActiveRequestSignature()
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[obfuscationModeKey] = mode.name }
-        }
-        _uiState.value.selectedLocation?.let { fetchWeather(it, force = true) }
+        applyPrivacySettings(
+            mode = mode,
+            gridKm = _uiState.value.gridKm
+        )
     }
 
     fun setGridKm(km: Float) {
-        addLog("Grid size set to: $km km")
-        _uiState.update { it.copy(gridKm = km) }
+        applyPrivacySettings(
+            mode = _uiState.value.obfuscationMode,
+            gridKm = km
+        )
+    }
+
+    fun applyPrivacySettings(mode: ObfuscationMode, gridKm: Float) {
+        val state = _uiState.value
+        val modeChanged = state.obfuscationMode != mode
+        val gridChanged = state.gridKm != gridKm
+        if (!modeChanged && !gridChanged) {
+            return
+        }
+
+        if (modeChanged) {
+            addLog("Obfuscation mode set to: $mode")
+        }
+        if (gridChanged) {
+            addLog("Grid size set to: $gridKm km")
+        }
+
+        _uiState.update {
+            it.copy(
+                obfuscationMode = mode,
+                gridKm = gridKm
+            )
+        }
         refreshActiveRequestSignature()
         viewModelScope.launch {
-            applicationContext.dataStore.edit { it[gridKmKey] = km }
+            applicationContext.dataStore.edit {
+                it[obfuscationModeKey] = mode.name
+                it[gridKmKey] = gridKm
+            }
         }
-        _uiState.value.selectedLocation?.let { fetchWeather(it, force = true) }
+        _uiState.value.selectedLocation?.let {
+            fetchWeather(
+                location = it,
+                force = true,
+                bypassLocationGateIfDistanceOverKm = perLocationGateBypassDistanceKm
+            )
+        }
     }
 
     fun setExperimentalEnabled(enabled: Boolean) {
@@ -1332,18 +1393,22 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         force: Boolean = false,
         animateResponse: Boolean = true,
         trigger: RefreshTrigger = RefreshTrigger.USER_INTERACTION,
-        bypassFollowModeGuard: Boolean = false
+        bypassFollowModeGuard: Boolean = false,
+        bypassLocationGateIfDistanceOverKm: Double? = null
     ) {
         weatherJob?.cancel()
         weatherJob = viewModelScope.launch {
-            val activeWeather = weatherForActiveSignature(locationKey(location))
+            val key = locationKey(location)
+            val activeWeather = weatherForActiveSignature(key)
+            val hasAnyCachedWeather = _uiState.value.weatherMap[key] != null
             requestWeatherIfNeeded(
                 location = location,
                 force = force,
                 trigger = trigger,
                 animateResponse = animateResponse,
                 bypassFollowModeGuard = bypassFollowModeGuard,
-                showLoading = activeWeather == null
+                showLoading = activeWeather == null && !hasAnyCachedWeather,
+                bypassLocationGateIfDistanceOverKm = bypassLocationGateIfDistanceOverKm
             )
         }
     }
@@ -1354,7 +1419,9 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         trigger: RefreshTrigger,
         animateResponse: Boolean,
         bypassFollowModeGuard: Boolean,
-        showLoading: Boolean
+        showLoading: Boolean,
+        bypassLocationGateIfDistanceOverKm: Double? = null,
+        logNoFetch: Boolean = true
     ): Boolean {
         refreshActiveRequestSignature()
         val key = locationKey(location)
@@ -1372,11 +1439,25 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
         if (datasetsToRefresh.isEmpty()) {
             _uiState.update { it.copy(pageStatuses = it.pageStatuses + (key to true)) }
-            addLog("No fetch needed for ${location.name}; cache is within thresholds")
+            if (logNoFetch) {
+                addLog("No fetch needed for ${location.name}; cache is within thresholds")
+            }
             return false
         }
 
-        val gateDecision = evaluateRequestGate(key, now)
+        val bypassLocationGate = bypassLocationGateIfDistanceOverKm?.let { thresholdKm ->
+            shouldBypassPerLocationGateForDistance(
+                location = location,
+                state = state,
+                thresholdKm = thresholdKm
+            )
+        } ?: false
+
+        val gateDecision = evaluateRequestGate(
+            locationKey = key,
+            now = now,
+            bypassLocationGate = bypassLocationGate
+        )
         if (!gateDecision.isAllowed) {
             val waitMs = (gateDecision.nextAllowedAtMs - now).coerceAtLeast(0L)
             val reasons = gateDecision.reasons.joinToString(" + ")
@@ -1429,13 +1510,17 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         return WeatherRequestPolicy.resolveDatasetsToRefresh(refreshInput)
     }
 
-    private fun evaluateRequestGate(locationKey: String, now: Long): RequestGateDecision {
+    private fun evaluateRequestGate(
+        locationKey: String,
+        now: Long,
+        bypassLocationGate: Boolean = false
+    ): RequestGateDecision {
         pruneRequestHistories(now)
 
         val history = locationRequestHistory[locationKey]
         val snapshot = RequestGateSnapshot(
             backoffUntilMs = locationBackoff[locationKey]?.retryAfterMs ?: 0L,
-            locationLastRequestAtMs = history?.lastOrNull(),
+            locationLastRequestAtMs = if (bypassLocationGate) null else history?.lastOrNull(),
             globalRequestCount = globalRequestHistory.size,
             globalOldestRequestAtMs = globalRequestHistory.firstOrNull()
         )
@@ -1526,6 +1611,64 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         return "${location.lat},${location.lon}"
     }
 
+    private fun shouldBypassPerLocationGateForDistance(
+        location: LocationItem,
+        state: WeatherUiState,
+        thresholdKm: Double
+    ): Boolean {
+        val key = locationKey(location)
+        val previousWeather = state.weatherMap[key] ?: return false
+        val previousLat = previousWeather.latitude
+        val previousLon = previousWeather.longitude
+        if (!previousLat.isFinite() || !previousLon.isFinite()) {
+            return false
+        }
+
+        val nextRequestCoords = obfuscatedRequestLocation(location, state)
+        val distanceKm = distanceBetweenKm(
+            startLat = previousLat,
+            startLon = previousLon,
+            endLat = nextRequestCoords.latObf,
+            endLon = nextRequestCoords.lonObf
+        )
+        if (distanceKm <= thresholdKm) {
+            return false
+        }
+
+        addLog(
+            "Bypassing per-location gate for ${location.name}; " +
+                "coordinate shift=${"%.1f".format(Locale.US, distanceKm)}km"
+        )
+        return true
+    }
+
+    private fun distanceBetweenKm(
+        startLat: Double,
+        startLon: Double,
+        endLat: Double,
+        endLon: Double
+    ): Double {
+        val results = FloatArray(1)
+        Location.distanceBetween(startLat, startLon, endLat, endLon, results)
+        return results[0].toDouble() / 1000.0
+    }
+
+    private fun obfuscatedRequestLocation(
+        location: LocationItem,
+        state: WeatherUiState = _uiState.value
+    ) = run {
+        val calendar = Calendar.getInstance()
+        val seedStr = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.DAY_OF_YEAR)}"
+        val seed = seedStr.hashCode().toLong()
+        obfuscateLocation(
+            location.lat,
+            location.lon,
+            state.obfuscationMode,
+            state.gridKm.toDouble(),
+            seed = seed
+        )
+    }
+
     private suspend fun fetchAndStoreWeather(
         location: LocationItem,
         datasets: Set<WeatherDataset>,
@@ -1549,17 +1692,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
         val key = locationKey(location)
 
-        val calendar = Calendar.getInstance()
-        val seedStr = "${calendar.get(Calendar.YEAR)}-${calendar.get(Calendar.DAY_OF_YEAR)}"
-        val seed = seedStr.hashCode().toLong()
-
-        val obfuscated = obfuscateLocation(
-            location.lat,
-            location.lon,
-            _uiState.value.obfuscationMode,
-            _uiState.value.gridKm.toDouble(),
-            seed = seed
-        )
+        val requestState = _uiState.value
+        val obfuscated = obfuscatedRequestLocation(location, requestState)
 
         if (showLoading) {
             _uiState.update { it.copy(isLoading = true) }
@@ -1567,7 +1701,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
         addLog(
             "Requesting weather: lat=${obfuscated.latObf}, lon=${obfuscated.lonObf} " +
-                "(orig ${location.lat}, ${location.lon}; mode=${_uiState.value.obfuscationMode})"
+                "(orig ${location.lat}, ${location.lon}; mode=${requestState.obfuscationMode})"
         )
 
         val requestTime = System.currentTimeMillis()

@@ -71,12 +71,11 @@ fun WeatherDetailsSheet(
                 val key = selectedLoc?.let { "${it.lat},${it.lon}" }
                 val staleServeWindowMs = 12 * 60 * 60 * 1000L
                 val now = System.currentTimeMillis()
-                val isSignatureMatch = key != null && uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
 
-                val rawWeather = if (isSignatureMatch) key?.let { uiState.weatherMap[it] } else null
-                val currentUpdatedAt = if (isSignatureMatch) key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L else 0L
-                val hourlyUpdatedAt = if (isSignatureMatch) key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L else 0L
-                val dailyUpdatedAt = if (isSignatureMatch) key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L else 0L
+                val rawWeather = key?.let { uiState.weatherMap[it] }
+                val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+                val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
+                val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
 
                 val currentUsable = rawWeather?.currentWeather != null &&
                     currentUpdatedAt > 0L &&

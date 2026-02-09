@@ -16,6 +16,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Smoothed map transitions by replacing heavy snapshot/tile-wait flow with a lightweight transition mask during location switches.
 - Coalesced rapid location-switch updates so only the latest swipe target is applied after a short debounce, reducing repeated map recenter churn.
 - Reduced map transition render pressure by removing extra transition blur and limiting forced redraws to active transition/response animation windows.
+- Changed mode-switch weather handling to keep existing values visible (greyed) while fetching new-signature data, instead of clearing immediately.
+- Added conditional mode-switch fetch acceleration: bypass per-location 60s gate only when prior-vs-new request coordinates differ by more than 15 km (global cap/backoff unchanged).
+- Moved weather warnings to a regular Settings block at the bottom, added auto-scroll-to-warnings on open, and added a concise explanation of greyed weather text.
+- Updated settings cog status tint to amber when weather warnings are present (error red still takes priority).
+- Deferred privacy setting application so obfuscation mode and grid distance are staged during editing and applied only when Settings is closed.
 
 ## [0.3.0] - 2026-02-08
 

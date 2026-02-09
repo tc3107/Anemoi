@@ -267,6 +267,40 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
         val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
         val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
+        val warningStaleServeWindowMs = 12 * 60 * 60 * 1000L
+        val warningCurrentThresholdMs = 5 * 60 * 1000L
+        val warningHourlyThresholdMs = 20 * 60 * 1000L
+        val warningDailyThresholdMs = 2 * 60 * 60 * 1000L
+        val warningNow = System.currentTimeMillis()
+        val warningKey = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
+        val warningSignatureMismatch = warningKey != null &&
+            uiState.cacheSignatureMap[warningKey] != uiState.activeRequestSignature
+        val warningWeather = warningKey?.let { uiState.weatherMap[it] }
+        val warningCurrentUpdatedAt = warningKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+        val warningHourlyUpdatedAt = warningKey?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
+        val warningDailyUpdatedAt = warningKey?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
+        val hasWeatherWarnings = warningSignatureMismatch ||
+            hasFreshnessWarning(
+                hasData = warningWeather?.currentWeather != null,
+                updatedAtMs = warningCurrentUpdatedAt,
+                nowMs = warningNow,
+                thresholdMs = warningCurrentThresholdMs,
+                staleServeWindowMs = warningStaleServeWindowMs
+            ) ||
+            hasFreshnessWarning(
+                hasData = warningWeather?.hourly != null,
+                updatedAtMs = warningHourlyUpdatedAt,
+                nowMs = warningNow,
+                thresholdMs = warningHourlyThresholdMs,
+                staleServeWindowMs = warningStaleServeWindowMs
+            ) ||
+            hasFreshnessWarning(
+                hasData = warningWeather?.daily != null,
+                updatedAtMs = warningDailyUpdatedAt,
+                nowMs = warningNow,
+                thresholdMs = warningDailyThresholdMs,
+                staleServeWindowMs = warningStaleServeWindowMs
+            )
         val enableGlobalSheetDragGesture =
             anchoredDraggableState.currentValue == SheetValue.Collapsed &&
                 anchoredDraggableState.targetValue == SheetValue.Collapsed
@@ -511,10 +545,10 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                     val grayThresholdMs = 60 * 60 * 1000L
 
                                     val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
-                                    val rawWeather = if (isSignatureMatch) uiState.weatherMap[key] else null
-                                    val currentUpdatedAt = if (isSignatureMatch) uiState.currentUpdateTimeMap[key] ?: 0L else 0L
-                                    val hourlyUpdatedAt = if (isSignatureMatch) uiState.hourlyUpdateTimeMap[key] ?: 0L else 0L
-                                    val dailyUpdatedAt = if (isSignatureMatch) uiState.dailyUpdateTimeMap[key] ?: 0L else 0L
+                                    val rawWeather = uiState.weatherMap[key]
+                                    val currentUpdatedAt = uiState.currentUpdateTimeMap[key] ?: 0L
+                                    val hourlyUpdatedAt = uiState.hourlyUpdateTimeMap[key] ?: 0L
+                                    val dailyUpdatedAt = uiState.dailyUpdateTimeMap[key] ?: 0L
 
                                     val currentUsable = rawWeather?.currentWeather != null &&
                                         currentUpdatedAt > 0L &&
@@ -532,7 +566,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                         daily = if (dailyUsable) rawWeather.daily else null
                                     )
 
-                                    val useStaleColor = listOfNotNull(
+                                    val useStaleColor = !isSignatureMatch || listOfNotNull(
                                         if (currentUsable) now - currentUpdatedAt else null,
                                         if (hourlyUsable) now - hourlyUpdatedAt else null,
                                         if (dailyUsable) now - dailyUpdatedAt else null
@@ -577,6 +611,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                             isLocating = uiState.isLocating,
                             isFollowMode = uiState.isFollowMode,
                             hasErrors = uiState.errors.isNotEmpty(),
+                            hasWarnings = hasWeatherWarnings,
                             tintAlpha = currentTintAlpha,
                             blurStrength = currentBlurStrength,
                             onLocateClick = {
@@ -661,4 +696,18 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             }
         }
     }
+}
+
+private fun hasFreshnessWarning(
+    hasData: Boolean,
+    updatedAtMs: Long,
+    nowMs: Long,
+    thresholdMs: Long,
+    staleServeWindowMs: Long
+): Boolean {
+    if (!hasData || updatedAtMs <= 0L) {
+        return true
+    }
+    val ageMs = (nowMs - updatedAtMs).coerceAtLeast(0L)
+    return ageMs > thresholdMs || ageMs > staleServeWindowMs
 }

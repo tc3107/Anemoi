@@ -1,5 +1,6 @@
 package com.example.anemoi.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -31,34 +32,85 @@ import kotlin.math.roundToInt
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     val haptic = LocalHapticFeedback.current
-    
+    var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
+    var draftGridKm by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.gridKm) }
+    val settingsScrollState = rememberScrollState()
+    var didAutoScrollToWarnings by remember(uiState.isSettingsOpen) { mutableStateOf(false) }
+
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
     val staleServeWindowMs = 12 * 60 * 60 * 1000L
-    val outdatedThresholdMs = 60 * 60 * 1000L
+    val currentThresholdMs = 5 * 60 * 1000L
+    val hourlyThresholdMs = 20 * 60 * 1000L
+    val dailyThresholdMs = 2 * 60 * 60 * 1000L
     val now = System.currentTimeMillis()
     val key = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
     val isSignatureMatch = key != null && uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
-    val rawWeather = if (isSignatureMatch) key?.let { uiState.weatherMap[it] } else null
-    val currentUpdatedAt = if (isSignatureMatch) key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L else 0L
-    val hourlyUpdatedAt = if (isSignatureMatch) key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L else 0L
-    val dailyUpdatedAt = if (isSignatureMatch) key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L else 0L
+    val rawWeather = key?.let { uiState.weatherMap[it] }
+    val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+    val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
+    val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
 
-    val currentUsable = rawWeather?.currentWeather != null &&
-        currentUpdatedAt > 0L &&
-        now - currentUpdatedAt <= staleServeWindowMs
-    val hourlyUsable = rawWeather?.hourly != null &&
-        hourlyUpdatedAt > 0L &&
-        now - hourlyUpdatedAt <= staleServeWindowMs
-    val dailyUsable = rawWeather?.daily != null &&
-        dailyUpdatedAt > 0L &&
-        now - dailyUpdatedAt <= staleServeWindowMs
+    val warningDetails = buildList {
+        buildFreshnessWarningLine(
+            label = "Current conditions",
+            hasData = rawWeather?.currentWeather != null,
+            updatedAtMs = currentUpdatedAt,
+            nowMs = now,
+            thresholdMs = currentThresholdMs,
+            staleServeWindowMs = staleServeWindowMs
+        )?.let { add(it) }
 
-    val hasOutdatedData = listOfNotNull(
-        if (currentUsable) now - currentUpdatedAt else null,
-        if (hourlyUsable) now - hourlyUpdatedAt else null,
-        if (dailyUsable) now - dailyUpdatedAt else null
-    ).any { it > outdatedThresholdMs }
+        buildFreshnessWarningLine(
+            label = "Hourly forecast",
+            hasData = rawWeather?.hourly != null,
+            updatedAtMs = hourlyUpdatedAt,
+            nowMs = now,
+            thresholdMs = hourlyThresholdMs,
+            staleServeWindowMs = staleServeWindowMs
+        )?.let { add(it) }
+
+        buildFreshnessWarningLine(
+            label = "Daily forecast",
+            hasData = rawWeather?.daily != null,
+            updatedAtMs = dailyUpdatedAt,
+            nowMs = now,
+            thresholdMs = dailyThresholdMs,
+            staleServeWindowMs = staleServeWindowMs
+        )?.let { add(it) }
+
+        if (key != null && !isSignatureMatch) {
+            add("Data was fetched with different privacy settings.")
+        }
+    }
+    val hasOutdatedData = warningDetails.isNotEmpty()
+
+    val closeSettingsAndApplyPrivacyChanges: () -> Unit = {
+        val modeChanged = draftObfuscationMode != uiState.obfuscationMode
+        val gridChanged = draftGridKm != uiState.gridKm
+        onBack()
+        if (modeChanged || gridChanged) {
+            viewModel.applyPrivacySettings(
+                mode = draftObfuscationMode,
+                gridKm = draftGridKm
+            )
+        }
+    }
+
+    BackHandler {
+        closeSettingsAndApplyPrivacyChanges()
+    }
+
+    LaunchedEffect(uiState.isSettingsOpen, settingsScrollState.maxValue, didAutoScrollToWarnings) {
+        if (
+            uiState.isSettingsOpen &&
+            !didAutoScrollToWarnings &&
+            settingsScrollState.maxValue > 0
+        ) {
+            didAutoScrollToWarnings = true
+            settingsScrollState.animateScrollTo(settingsScrollState.maxValue)
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -92,29 +144,10 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
 
-                if (hasOutdatedData) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFC77900).copy(alpha = 0.35f)
-                        )
-                    ) {
-                        Text(
-                            text = "Warning: Some weather data is over 1 hour old.",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-                        )
-                    }
-                }
-
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(settingsScrollState)
                 ) {
                     Text(
                         "Units",
@@ -175,27 +208,31 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                             
                             SegmentedSelector(
                                 options = listOf("Precise", "Obfuscated"),
-                                selectedIndex = if (uiState.obfuscationMode == ObfuscationMode.PRECISE) 0 else 1,
-                                onOptionSelected = { 
-                                    viewModel.setObfuscationMode(if (it == 0) ObfuscationMode.PRECISE else ObfuscationMode.GRID)
+                                selectedIndex = if (draftObfuscationMode == ObfuscationMode.PRECISE) 0 else 1,
+                                onOptionSelected = {
+                                    draftObfuscationMode = if (it == 0) {
+                                        ObfuscationMode.PRECISE
+                                    } else {
+                                        ObfuscationMode.GRID
+                                    }
                                 }
                             )
 
-                            if (uiState.obfuscationMode == ObfuscationMode.GRID) {
+                            if (draftObfuscationMode == ObfuscationMode.GRID) {
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Grid Size", color = Color.White)
-                                    Text("${uiState.gridKm.roundToInt()} km", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("${draftGridKm.roundToInt()} km", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                                 val steps = listOf(1f, 2f, 5f, 10f, 20f, 50f)
                                 Slider(
-                                    value = steps.indexOf(uiState.gridKm).toFloat().coerceAtLeast(0f),
-                                    onValueChange = { 
+                                    value = steps.indexOf(draftGridKm).toFloat().coerceAtLeast(0f),
+                                    onValueChange = {
                                         val index = it.roundToInt().coerceIn(0, steps.size - 1)
-                                        viewModel.setGridKm(steps[index])
+                                        draftGridKm = steps[index]
                                     },
                                     valueRange = 0f..(steps.size - 1).toFloat(),
                                     steps = steps.size - 2,
@@ -205,7 +242,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                         inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                                     )
                                 )
-                                val label = when (uiState.gridKm) {
+                                val label = when (draftGridKm) {
                                     1f -> "Neighborhood"
                                     2f -> "Small Town"
                                     5f -> "District"
@@ -275,12 +312,53 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         lineHeight = 16.sp,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
+
+                    Text(
+                        "Warnings",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    )
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            if (hasOutdatedData) {
+                                warningDetails.forEach { detail ->
+                                    Text(
+                                        text = "• $detail",
+                                        color = Color(0xFFFFD27A),
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "No active weather warnings.",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Grey weather text means stale or old-mode data is shown while a refresh is pending.",
+                                color = Color.White.copy(alpha = 0.78f),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
                 }
 
                 Button(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onBack()
+                        closeSettingsAndApplyPrivacyChanges()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -293,6 +371,54 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                 ) {
                     Text("Close")
                 }
+            }
+        }
+    }
+}
+
+private fun buildFreshnessWarningLine(
+    label: String,
+    hasData: Boolean,
+    updatedAtMs: Long,
+    nowMs: Long,
+    thresholdMs: Long,
+    staleServeWindowMs: Long
+): String? {
+    if (!hasData || updatedAtMs <= 0L) {
+        return "$label missing."
+    }
+
+    val ageMs = (nowMs - updatedAtMs).coerceAtLeast(0L)
+    val ageLabel = formatDurationLabel(ageMs)
+    return when {
+        ageMs > staleServeWindowMs -> "$label expired ($ageLabel)."
+        ageMs > thresholdMs -> "$label stale ($ageLabel > ${formatDurationLabel(thresholdMs)})."
+        else -> null
+    }
+}
+
+private fun formatDurationLabel(durationMs: Long): String {
+    val minutes = (durationMs / 60_000L).coerceAtLeast(0L)
+    return when {
+        minutes <= 0L -> "under 1m"
+        minutes < 60L -> "${minutes}m"
+        minutes < 24 * 60L -> {
+            val hours = minutes / 60L
+            val remainingMinutes = minutes % 60L
+            if (remainingMinutes == 0L) {
+                "${hours}h"
+            } else {
+                "${hours}h ${remainingMinutes}m"
+            }
+        }
+
+        else -> {
+            val days = minutes / (24L * 60L)
+            val remainingHours = (minutes % (24L * 60L)) / 60L
+            if (remainingHours == 0L) {
+                "${days}d"
+            } else {
+                "${days}d ${remainingHours}h"
             }
         }
     }
