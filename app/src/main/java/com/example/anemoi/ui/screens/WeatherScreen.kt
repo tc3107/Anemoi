@@ -267,20 +267,31 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
         val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
         val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
+        val enableGlobalSheetDragGesture =
+            anchoredDraggableState.currentValue == SheetValue.Collapsed &&
+                anchoredDraggableState.targetValue == SheetValue.Collapsed
 
         Box(modifier = Modifier
             .fillMaxSize()
-            .pointerInput(anchoredDraggableState.currentValue, uiState.isOrganizerMode, uiState.isSettingsOpen) {
-                if (uiState.isOrganizerMode || uiState.isSettingsOpen) return@pointerInput
+            .pointerInput(enableGlobalSheetDragGesture, uiState.isOrganizerMode, uiState.isSettingsOpen) {
+                if (uiState.isOrganizerMode || uiState.isSettingsOpen || !enableGlobalSheetDragGesture) {
+                    return@pointerInput
+                }
 
                 var upwardDragAccum = 0f
                 var accumDx = 0f
                 var accumDy = 0f
                 var isSheetGesture = false
+                var smoothedDragY = 0f
+                var lastFilteredDragY = 0f
                 val rampDistance = with(density) { 220.dp.toPx() }
                 val commitExpandThreshold = with(density) { 24.dp.toPx() }
                 val intentDistance = with(density) { 18.dp.toPx() }
                 val verticalIntentRatio = 0.75f
+                val dragSmoothingAlpha = 0.28f
+                val dragReverseAlpha = 0.52f
+                val dragDeadzonePx = with(density) { 0.7.dp.toPx() }
+                val maxDispatchStepPx = with(density) { 36.dp.toPx() }
                 val velocityTracker = VelocityTracker()
 
                 detectDragGestures(
@@ -289,6 +300,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                         accumDx = 0f
                         accumDy = 0f
                         isSheetGesture = false
+                        smoothedDragY = 0f
+                        lastFilteredDragY = 0f
                         velocityTracker.resetTracking()
                     },
                     onDrag = { change, dragAmount ->
@@ -317,7 +330,19 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                             dragAmount.y * 1.15f
                         }
 
-                        val consumed = anchoredDraggableState.dispatchRawDelta(amplifiedDragY)
+                        val filteredDragY = if (abs(amplifiedDragY) < dragDeadzonePx) 0f else amplifiedDragY
+                        val alpha = if (
+                            filteredDragY != 0f &&
+                            lastFilteredDragY != 0f &&
+                            filteredDragY * lastFilteredDragY < 0f
+                        ) dragReverseAlpha else dragSmoothingAlpha
+                        smoothedDragY += (filteredDragY - smoothedDragY) * alpha
+                        lastFilteredDragY = filteredDragY
+
+                        val dispatchDragY = smoothedDragY.coerceIn(-maxDispatchStepPx, maxDispatchStepPx)
+                        if (abs(dispatchDragY) < dragDeadzonePx) return@detectDragGestures
+
+                        val consumed = anchoredDraggableState.dispatchRawDelta(dispatchDragY)
                         if (consumed != 0f) change.consume()
                     },
                     onDragEnd = {
@@ -331,6 +356,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                         accumDx = 0f
                         accumDy = 0f
                         isSheetGesture = false
+                        smoothedDragY = 0f
+                        lastFilteredDragY = 0f
 
                         coroutineScope.launch {
                             if (shouldCommitExpanded) {
@@ -347,6 +374,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                         accumDx = 0f
                         accumDy = 0f
                         isSheetGesture = false
+                        smoothedDragY = 0f
+                        lastFilteredDragY = 0f
                         if (hadSheetGesture) {
                             coroutineScope.launch {
                                 anchoredDraggableState.settle(0f)
