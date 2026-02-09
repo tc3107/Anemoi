@@ -405,7 +405,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     gridKm = uiState.gridKm.toDouble(),
                     lastResponseCoords = uiState.lastResponseCoords,
                     responseAnimTrigger = uiState.responseAnimTrigger,
-                    shouldAnimate = !uiState.isLoading
+                    shouldAnimate = !uiState.isLoading,
+                    interactionEnabled = !uiState.isOrganizerMode && !uiState.isSettingsOpen
                 )
             }
 
@@ -536,34 +537,14 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                         if (hourlyUsable) now - hourlyUpdatedAt else null,
                                         if (dailyUsable) now - dailyUpdatedAt else null
                                     ).any { it > grayThresholdMs }
-                                    val oldestUsableAgeMs = listOfNotNull(
-                                        if (currentUsable) now - currentUpdatedAt else null,
-                                        if (hourlyUsable) now - hourlyUpdatedAt else null,
-                                        if (dailyUsable) now - dailyUpdatedAt else null
-                                    ).maxOrNull() ?: 0L
-                                    val isCurrentActivePage = (page == pagerState.currentPage)
-                                    
+
                                     WeatherDisplay(
                                         weather = weather,
                                         tempUnit = uiState.tempUnit,
-                                        showDashesOverride = (page == 0 && !uiState.locationFound) || !isCurrentActivePage,
+                                        showDashesOverride = (page == 0 && !uiState.locationFound) || page != pagerState.currentPage,
                                         textAlpha = textAlpha,
                                         useStaleColor = useStaleColor
                                     )
-                                    if (isCurrentActivePage && oldestUsableAgeMs > grayThresholdMs) {
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        val ageMinutes = oldestUsableAgeMs / 60000
-                                        val ageLabel = if (ageMinutes >= 60) {
-                                            "${ageMinutes / 60}h ${(ageMinutes % 60)}m"
-                                        } else {
-                                            "${ageMinutes}m"
-                                        }
-                                        Text(
-                                            text = "Last updated $ageLabel ago",
-                                            color = Color(0xFFB0B0B0).copy(alpha = 0.9f),
-                                            fontSize = 12.sp
-                                        )
-                                    }
                                 } else {
                                     WeatherDisplay(
                                         weather = null,

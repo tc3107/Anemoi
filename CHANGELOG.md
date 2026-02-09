@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Replaced the inline weather-page `Last updated` age label with a settings-level warning shown when displayed weather data is older than one hour.
+- Disabled map touch/pan input while Settings or Organizer overlays are open to prevent background map interaction through uncovered areas.
 - Scoped global pull-up-sheet drag handling to the fully-collapsed state so it no longer intercepts gestures while the sheet is settling or already expanded.
 - Smoothed pull-up-sheet drag input with deadzone filtering, direction-change damping, and per-frame delta clamping to reduce jitter and abrupt motion.
 - Disabled details-sheet list scrolling while collapsed while preserving lazy-list state for consistent scroll position after expansion.

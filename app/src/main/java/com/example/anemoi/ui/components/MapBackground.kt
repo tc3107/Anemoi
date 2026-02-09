@@ -40,7 +40,8 @@ fun MapBackground(
     gridKm: Double = 5.0,
     lastResponseCoords: Pair<Double, Double>? = null,
     responseAnimTrigger: Long = 0L,
-    shouldAnimate: Boolean = true
+    shouldAnimate: Boolean = true,
+    interactionEnabled: Boolean = true
 ) {
     val mapSwitchDebounceMs = 180L
     val mapSwitchMaskTailMs = 80L
@@ -111,6 +112,7 @@ fun MapBackground(
                         isClickable = false
                         isFocusable = false
                         zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+                        setOnTouchListener { _, _ -> !interactionEnabled }
                         controller.setZoom(zoom.toDouble())
                         controller.setCenter(appliedGeoPoint)
                         
@@ -231,6 +233,7 @@ fun MapBackground(
                     }
                 },
                 update = { view ->
+                    view.setOnTouchListener { _, _ -> !interactionEnabled }
                     view.controller.setZoom(zoom.toDouble())
                     
                     val currentTarget = appliedLat to appliedLon

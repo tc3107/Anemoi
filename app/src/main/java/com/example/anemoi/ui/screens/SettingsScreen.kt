@@ -34,6 +34,31 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
+    val staleServeWindowMs = 12 * 60 * 60 * 1000L
+    val outdatedThresholdMs = 60 * 60 * 1000L
+    val now = System.currentTimeMillis()
+    val key = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
+    val isSignatureMatch = key != null && uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
+    val rawWeather = if (isSignatureMatch) key?.let { uiState.weatherMap[it] } else null
+    val currentUpdatedAt = if (isSignatureMatch) key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L else 0L
+    val hourlyUpdatedAt = if (isSignatureMatch) key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L else 0L
+    val dailyUpdatedAt = if (isSignatureMatch) key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L else 0L
+
+    val currentUsable = rawWeather?.currentWeather != null &&
+        currentUpdatedAt > 0L &&
+        now - currentUpdatedAt <= staleServeWindowMs
+    val hourlyUsable = rawWeather?.hourly != null &&
+        hourlyUpdatedAt > 0L &&
+        now - hourlyUpdatedAt <= staleServeWindowMs
+    val dailyUsable = rawWeather?.daily != null &&
+        dailyUpdatedAt > 0L &&
+        now - dailyUpdatedAt <= staleServeWindowMs
+
+    val hasOutdatedData = listOfNotNull(
+        if (currentUsable) now - currentUpdatedAt else null,
+        if (hourlyUsable) now - hourlyUpdatedAt else null,
+        if (dailyUsable) now - dailyUpdatedAt else null
+    ).any { it > outdatedThresholdMs }
 
     Box(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -66,6 +91,25 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
+
+                if (hasOutdatedData) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFC77900).copy(alpha = 0.35f)
+                        )
+                    ) {
+                        Text(
+                            text = "Warning: Some weather data is over 1 hour old.",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                        )
+                    }
+                }
 
                 Column(
                     modifier = Modifier
