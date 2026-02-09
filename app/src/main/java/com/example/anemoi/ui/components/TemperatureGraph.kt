@@ -20,7 +20,6 @@ import com.example.anemoi.data.TempUnit
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
@@ -91,7 +90,7 @@ fun TemperatureGraph(
     }
 
     fun formatTempWithUnit(celsius: Double): String {
-        val displayValue = toDisplayTemp(celsius).roundToInt()
+        val displayValue = toDisplayTemp(celsius).toInt()
         return when (tempUnit) {
             TempUnit.CELSIUS -> "${displayValue}°C"
             TempUnit.FAHRENHEIT -> "${displayValue}°F"
@@ -216,9 +215,13 @@ fun TemperatureGraph(
                         } else {
                             curF
                         }
-                        val interpolatedTemp = getInterpolatedTemp(fraction)
+                        val displayedTemp = if (isDragging && dragX != null) {
+                            getInterpolatedTemp(fraction)
+                        } else {
+                            currentTemp ?: getInterpolatedTemp(fraction)
+                        }
 
-                        val readingLabel = formatTempWithUnit(interpolatedTemp)
+                        val readingLabel = formatTempWithUnit(displayedTemp)
                         val hr = (fraction * 24).toInt() % 24
                         val min = ((fraction * 24 - hr) * 60).toInt()
                         val clockLabel = String.format("%02d:%02d", hr, min)
@@ -364,9 +367,18 @@ fun TemperatureGraph(
                     drawText(labelLayout, topLeft = Offset(center.x - labelLayout.size.width / 2, labelY))
                 }
             }
-            drawPointHUD(Offset(getX(dayTemps.lastIndexOf(maxVal).toFloat() / totalPts), getY(maxVal)), Color(0xFF0288D1), "H")
-            drawPointHUD(Offset(getX(dayTemps.lastIndexOf(minVal).toFloat() / totalPts), getY(minVal)), Color(0xFF0288D1), "L")
-            drawPointHUD(Offset(getX(curF), getY(getInterpolatedTemp(curF))), Color.White, null)
+
+            fun pointOnCurve(fraction: Float): Offset {
+                val clamped = fraction.coerceIn(0f, 1f)
+                return Offset(getX(clamped), getY(getInterpolatedTemp(clamped)))
+            }
+
+            val highFraction = dayTemps.lastIndexOf(maxVal).toFloat() / totalPts
+            val lowFraction = dayTemps.lastIndexOf(minVal).toFloat() / totalPts
+
+            drawPointHUD(pointOnCurve(highFraction), Color(0xFF0288D1), "H")
+            drawPointHUD(pointOnCurve(lowFraction), Color(0xFF0288D1), "L")
+            drawPointHUD(pointOnCurve(curF), Color.White, null)
         }
     }
 }

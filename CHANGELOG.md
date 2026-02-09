@@ -8,6 +8,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Refined the 10-day forecast rows with taller item height, larger min/max temperature text, and thicker daily range tracks for better readability.
+- Reworked 10-day forecast row layout to reserve a precipitation lane before the weather icon, shifting the temperature track start farther right.
+- Added per-day precipitation probability labels (non-zero only) to the left of each 10-day forecast icon, with blue intensity mapped from low to high probability.
+- Updated temperature graph readout behavior to show the real `current_weather` value when idle, using interpolated values only while dragging.
+- Aligned fixed temperature graph markers (`H`, `L`, and current) to the plotted line path so points sit directly on the curve.
+- Matched temperature graph value rounding to the main temperature display by using truncation instead of nearest-integer rounding.
 - Replaced the inline weather-page `Last updated` age label with a settings-level warning shown when displayed weather data is older than one hour.
 - Disabled map touch/pan input while Settings or Organizer overlays are open to prevent background map interaction through uncovered areas.
 - Scoped global pull-up-sheet drag handling to the fully-collapsed state so it no longer intercepts gestures while the sheet is settling or already expanded.

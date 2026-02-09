@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -42,6 +43,7 @@ import java.util.Calendar
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
@@ -50,6 +52,7 @@ fun DailyForecastWidget(
     weatherCodes: List<Int>,
     minTemperatures: List<Double>,
     maxTemperatures: List<Double>,
+    precipitationProbabilityMax: List<Double>,
     tempUnit: TempUnit,
     modifier: Modifier = Modifier
 ) {
@@ -62,7 +65,7 @@ fun DailyForecastWidget(
             fontWeight = FontWeight.SemiBold
         )
     }
-    val rows = remember(dates, weatherCodes, minTemperatures, maxTemperatures) {
+    val rows = remember(dates, weatherCodes, minTemperatures, maxTemperatures, precipitationProbabilityMax) {
         (0 until 10).map { index ->
             DailyForecastRow(
                 index = index,
@@ -74,7 +77,8 @@ fun DailyForecastWidget(
                 },
                 weatherCode = weatherCodes.getOrNull(index),
                 minTemp = minTemperatures.getOrNull(index),
-                maxTemp = maxTemperatures.getOrNull(index)
+                maxTemp = maxTemperatures.getOrNull(index),
+                precipitationProbability = precipitationProbabilityMax.getOrNull(index)
             )
         }
     }
@@ -84,7 +88,8 @@ fun DailyForecastWidget(
             ?: 0
         with(density) { maxWidthPx.toDp() + 2.dp }
     }
-    val iconLaneWidth = 40.dp
+    val precipitationLaneWidth = 34.dp
+    val iconLaneWidth = 30.dp
 
     val globalMin = rows.mapNotNull { it.minTemp }.minOrNull()
     val globalMax = rows.mapNotNull { it.maxTemp }.maxOrNull()
@@ -118,11 +123,14 @@ fun DailyForecastWidget(
                 val iconResId = row.weatherCode?.let { getDailyWeatherIconRes(it, context) } ?: 0
                 val minTempText = row.minTemp?.let { formatTemp(it, tempUnit) } ?: "--°"
                 val maxTempText = row.maxTemp?.let { formatTemp(it, tempUnit) } ?: "--°"
+                val precipitationPercent = row.precipitationProbability
+                    ?.takeIf { it > 0.0 }
+                    ?.let { max(1, it.roundToInt()) }
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(32.dp),
+                        .height(38.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -132,6 +140,25 @@ fun DailyForecastWidget(
                         modifier = Modifier.width(dayLabelColumnWidth)
                     )
 
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box(
+                        modifier = Modifier.width(precipitationLaneWidth),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        if (precipitationPercent != null) {
+                            Text(
+                                text = "$precipitationPercent%",
+                                color = precipitationColor(precipitationPercent),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.End
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     Box(
                         modifier = Modifier.width(iconLaneWidth),
                         contentAlignment = Alignment.Center
@@ -140,7 +167,7 @@ fun DailyForecastWidget(
                             Image(
                                 painter = painterResource(id = iconResId),
                                 contentDescription = null,
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(20.dp),
                                 colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
                             )
                         } else {
@@ -157,10 +184,10 @@ fun DailyForecastWidget(
                     Text(
                         text = minTempText,
                         color = Color.White.copy(alpha = 0.68f),
-                        fontSize = 13.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.width(44.dp)
+                        modifier = Modifier.width(48.dp)
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -172,7 +199,7 @@ fun DailyForecastWidget(
                         globalMax = safeGlobalMax,
                         modifier = Modifier
                             .weight(1f)
-                            .height(8.dp)
+                            .height(10.dp)
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))
@@ -180,10 +207,10 @@ fun DailyForecastWidget(
                     Text(
                         text = maxTempText,
                         color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 13.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.width(44.dp)
+                        modifier = Modifier.width(48.dp)
                     )
                 }
 
@@ -210,7 +237,7 @@ private fun TemperatureRangeTrack(
 ) {
     Canvas(modifier = modifier.fillMaxWidth()) {
         val centerY = size.height / 2f
-        val strokeWidth = max(2f, size.height * 0.55f)
+        val strokeWidth = max(2f, size.height * 0.65f)
         val baseGradient = Brush.horizontalGradient(
             colors = listOf(
                 Color(0xFF81D4FA).copy(alpha = 0.28f),
@@ -256,6 +283,15 @@ private fun TemperatureRangeTrack(
     }
 }
 
+private fun precipitationColor(percent: Int): Color {
+    val fraction = (percent / 100f).coerceIn(0f, 1f)
+    return lerp(
+        start = Color(0xFF81D4FA),
+        stop = Color(0xFF0288D1),
+        fraction = fraction
+    )
+}
+
 private fun shortWeekdayLabel(dateIso: String?, dayOffset: Int): String {
     val parsedDate = parseDailyDate(dateIso)
     val fallback = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, dayOffset) }.time
@@ -281,5 +317,6 @@ private data class DailyForecastRow(
     val dayLabel: String,
     val weatherCode: Int?,
     val minTemp: Double?,
-    val maxTemp: Double?
+    val maxTemp: Double?,
+    val precipitationProbability: Double?
 )

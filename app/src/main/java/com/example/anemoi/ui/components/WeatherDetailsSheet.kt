@@ -252,6 +252,7 @@ fun WeatherDetailsSheet(
                         weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
                         minTemperatures = weather?.daily?.minTemp ?: emptyList(),
                         maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
+                        precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
                         tempUnit = uiState.tempUnit,
                         modifier = Modifier.fillMaxWidth()
                     )
