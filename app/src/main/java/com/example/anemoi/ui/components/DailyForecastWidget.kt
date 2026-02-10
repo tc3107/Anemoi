@@ -89,7 +89,7 @@ fun DailyForecastWidget(
             ?: 0
         with(density) { maxWidthPx.toDp() + 2.dp }
     }
-    val precipitationLaneWidth = 34.dp
+    val precipitationLaneWidth = 44.dp
     val iconLaneWidth = 30.dp
     val surfaceShape = RoundedCornerShape(28.dp)
 
