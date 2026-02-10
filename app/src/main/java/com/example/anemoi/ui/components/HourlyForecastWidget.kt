@@ -3,46 +3,36 @@ package com.example.anemoi.ui.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Velocity
+import com.example.anemoi.R
 import com.example.anemoi.data.TempUnit
 import com.example.anemoi.util.formatTemp
 import java.util.Calendar
 import java.util.Locale
-import kotlinx.coroutines.flow.first
-import kotlin.math.abs
 
 @Composable
 fun HourlyForecastWidget(
@@ -53,12 +43,13 @@ fun HourlyForecastWidget(
     modifier: Modifier = Modifier,
     isExpanded: Boolean = false
 ) {
-    val context = LocalContext.current
     val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val todayDate = remember { 
+    val todayDate = remember {
         val c = Calendar.getInstance()
-        String.format(Locale.US, "%04d-%02d-%02d", 
-            c.get(Calendar.YEAR), 
+        String.format(
+            Locale.US,
+            "%04d-%02d-%02d",
+            c.get(Calendar.YEAR),
             c.get(Calendar.MONTH) + 1, 
             c.get(Calendar.DAY_OF_MONTH)
         )
@@ -66,31 +57,44 @@ fun HourlyForecastWidget(
 
     val forecastItems = remember(times, weatherCodes, temperatures, todayDate, currentHour) {
         times.mapIndexedNotNull { index, timeStr ->
-            try {
-                val parts = timeStr.split("T")
-                val date = parts[0]
-                val time = parts[1]
-                val hour = time.split(":")[0].toInt()
-                
-                if (date == todayDate) {
-                    HourlyForecastItem(
-                        displayHour = if (hour == currentHour) "Now" else String.format(Locale.US, "%02d", hour),
-                        fullTime = timeStr,
-                        weatherCode = weatherCodes.getOrNull(index) ?: -1,
-                        temperature = temperatures.getOrNull(index) ?: 0.0,
-                        isToday = true,
-                        hourInt = hour,
-                        isCurrent = hour == currentHour
-                    )
-                } else null
-            } catch (_: Exception) {
-                null
-            }
+            val separatorIndex = timeStr.indexOf('T')
+            if (separatorIndex <= 0 || separatorIndex + 3 >= timeStr.length) return@mapIndexedNotNull null
+
+            val date = timeStr.substring(0, separatorIndex)
+            if (date != todayDate) return@mapIndexedNotNull null
+
+            val hour = timeStr.substring(separatorIndex + 1, separatorIndex + 3).toIntOrNull()
+                ?: return@mapIndexedNotNull null
+
+            HourlyForecastItem(
+                displayHour = if (hour == currentHour) "Now" else String.format(Locale.US, "%02d", hour),
+                fullTime = timeStr,
+                weatherCode = weatherCodes.getOrNull(index) ?: -1,
+                temperature = temperatures.getOrNull(index) ?: 0.0,
+                isCurrent = hour == currentHour
+            )
         }
     }
 
-    val listState = rememberLazyListState()
     val currentIndex = remember(forecastItems) { forecastItems.indexOfFirst { it.isCurrent } }
+    val initialVisibleItemIndex = remember(currentIndex, isExpanded) {
+        if (!isExpanded || currentIndex == -1) {
+            0
+        } else {
+            // +1 to account for the leading divider item.
+            (currentIndex + 1 - 2).coerceAtLeast(0)
+        }
+    }
+    val listState = remember(initialVisibleItemIndex) {
+        LazyListState(firstVisibleItemIndex = initialVisibleItemIndex)
+    }
+    val iconResByCode = remember(forecastItems) {
+        forecastItems
+            .asSequence()
+            .map { it.weatherCode }
+            .distinct()
+            .associateWith(::getWeatherIconRes)
+    }
     val surfaceShape = RoundedCornerShape(28.dp)
     val blockParentPagerScroll = remember {
         object : NestedScrollConnection {
@@ -158,22 +162,6 @@ fun HourlyForecastWidget(
         val itemWidth = 60.dp
         val contentPaddingStart = 10.dp
         val itemSpacing = 10.dp
-        
-        LaunchedEffect(currentIndex, isExpanded) {
-            if (currentIndex != -1 && isExpanded) {
-                val targetIndex = currentIndex + 1
-                listState.scrollToItem(targetIndex)
-
-                val itemInfo = snapshotFlow {
-                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
-                }.first { it != null }
-
-                val viewportCenter = listState.layoutInfo.viewportEndOffset / 2
-                val itemCenter = itemInfo!!.offset + (itemInfo.size / 2)
-                val delta = itemCenter - viewportCenter
-                listState.scrollBy(delta.toFloat())
-            }
-        }
 
         if (forecastItems.isEmpty()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -215,19 +203,6 @@ fun HourlyForecastWidget(
                         .fillMaxWidth()
                         .weight(1f)
                         .nestedScroll(blockParentPagerScroll)
-                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.horizontalGradient(
-                                    0f to Color.Transparent,
-                                    0.08f to Color.Black,
-                                    0.92f to Color.Black,
-                                    1f to Color.Transparent
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
                 ) {
                     LazyRow(
                         state = listState,
@@ -243,21 +218,10 @@ fun HourlyForecastWidget(
                     ) {
                         item { EndDivider() }
 
-                        itemsIndexed(forecastItems) { index, item ->
-                            val layoutInfo = listState.layoutInfo
-                            val viewportCenter =
-                                (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
-                            val listItemInfo = layoutInfo.visibleItemsInfo
-                                .firstOrNull { it.index == index + 1 } // +1 because leading divider item
-                            val itemCenter = listItemInfo?.let { it.offset + (it.size / 2f) } ?: viewportCenter
-                            val distanceFromCenter = itemCenter - viewportCenter
-                            val normalizedDistance = (distanceFromCenter / (layoutInfo.viewportEndOffset * 0.42f))
-                                .coerceIn(-1f, 1f)
-                            val absDistance = abs(normalizedDistance)
-
-                            val itemScale = (1f - (0.18f * absDistance)).coerceAtLeast(0.82f)
-                            val itemAlpha = 1f - (0.30f * absDistance)
-                            val itemYOffset = 6f * absDistance
+                        itemsIndexed(
+                            items = forecastItems,
+                            key = { _, item -> item.fullTime }
+                        ) { _, item ->
                             val tileShape = RoundedCornerShape(16.dp)
 
                             Box(
@@ -269,24 +233,18 @@ fun HourlyForecastWidget(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .graphicsLayer {
-                                            scaleX = itemScale
-                                            scaleY = itemScale
-                                            alpha = itemAlpha
-                                            translationY = itemYOffset
-                                        }
                                         .clip(tileShape)
+                                        .background(
+                                            if (item.isCurrent) Color.White.copy(alpha = 0.22f)
+                                            else Color.White.copy(alpha = 0.1f)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.28f)
+                                            else Color.White.copy(alpha = 0.14f),
+                                            shape = tileShape
+                                        )
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .blur(10.dp)
-                                            .background(
-                                                if (item.isCurrent) Color.White.copy(alpha = 0.22f)
-                                                else Color.White.copy(alpha = 0.1f)
-                                            )
-                                    )
-
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier
@@ -305,9 +263,7 @@ fun HourlyForecastWidget(
 
                                         Spacer(modifier = Modifier.height(4.dp))
 
-                                        val iconResId = remember(item.weatherCode) {
-                                            getWeatherIconRes(item.weatherCode, context)
-                                        }
+                                        val iconResId = iconResByCode[item.weatherCode] ?: 0
 
                                         Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
                                             if (iconResId != 0) {
@@ -340,6 +296,35 @@ fun HourlyForecastWidget(
 
                         item { EndDivider() }
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(14.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.12f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(14.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.White.copy(alpha = 0.12f)
+                                    )
+                                )
+                            )
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -366,9 +351,42 @@ private fun EndDivider() {
     )
 }
 
-private fun getWeatherIconRes(code: Int, context: android.content.Context): Int {
-    @Suppress("DiscouragedApi")
-    return context.resources.getIdentifier("wmo_$code", "drawable", context.packageName)
+private fun getWeatherIconRes(code: Int): Int {
+    val normalizedCode = when (code) {
+        56, 57 -> 55
+        63 -> 62
+        72 -> 73
+        else -> code
+    }
+    return when (normalizedCode) {
+        0 -> R.drawable.wmo_0
+        1 -> R.drawable.wmo_1
+        2 -> R.drawable.wmo_2
+        3 -> R.drawable.wmo_3
+        45 -> R.drawable.wmo_45
+        48 -> R.drawable.wmo_48
+        51 -> R.drawable.wmo_51
+        53 -> R.drawable.wmo_53
+        55 -> R.drawable.wmo_55
+        61 -> R.drawable.wmo_61
+        62 -> R.drawable.wmo_62
+        65 -> R.drawable.wmo_65
+        66 -> R.drawable.wmo_66
+        67 -> R.drawable.wmo_67
+        71 -> R.drawable.wmo_71
+        73 -> R.drawable.wmo_73
+        75 -> R.drawable.wmo_75
+        77 -> R.drawable.wmo_77
+        80 -> R.drawable.wmo_80
+        81 -> R.drawable.wmo_81
+        82 -> R.drawable.wmo_82
+        85 -> R.drawable.wmo_85
+        86 -> R.drawable.wmo_86
+        95 -> R.drawable.wmo_95
+        96 -> R.drawable.wmo_96
+        99 -> R.drawable.wmo_99
+        else -> 0
+    }
 }
 
 @Composable
@@ -385,7 +403,5 @@ private data class HourlyForecastItem(
     val fullTime: String,
     val weatherCode: Int,
     val temperature: Double,
-    val isToday: Boolean,
-    val hourInt: Int,
     val isCurrent: Boolean
 )

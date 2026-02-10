@@ -5,14 +5,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,13 +41,67 @@ fun WeatherDetailsSheet(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val detailsListState = remember(resetScrollKey) { LazyListState() }
+    val detailsScrollState = rememberScrollState()
+    LaunchedEffect(resetScrollKey) {
+        detailsScrollState.scrollTo(0)
+    }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val widgetGap = 20.dp
         val horizontalPadding = 24.dp
         val availableWidth = maxWidth - (horizontalPadding * 2)
         val squareSize = (availableWidth - widgetGap) / 2
         val handleSurfaceShape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+        val selectedLoc = uiState.selectedLocation
+        val key = selectedLoc?.let { "${it.lat},${it.lon}" }
+        val staleServeWindowMs = 12 * 60 * 60 * 1000L
+        val now = System.currentTimeMillis()
+
+        val rawWeather = key?.let { uiState.weatherMap[it] }
+        val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+        val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
+        val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
+
+        val currentUsable = rawWeather?.currentWeather != null &&
+            currentUpdatedAt > 0L &&
+            now - currentUpdatedAt <= staleServeWindowMs
+        val hourlyUsable = rawWeather?.hourly != null &&
+            hourlyUpdatedAt > 0L &&
+            now - hourlyUpdatedAt <= staleServeWindowMs
+        val dailyUsable = rawWeather?.daily != null &&
+            dailyUpdatedAt > 0L &&
+            now - dailyUpdatedAt <= staleServeWindowMs
+
+        val weather = rawWeather?.copy(
+            currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+            hourly = if (hourlyUsable) rawWeather.hourly else null,
+            daily = if (dailyUsable) rawWeather.daily else null
+        )
+
+        val daily = weather?.daily
+        val h = daily?.daylightDuration?.firstOrNull()?.div(3600.0) ?: 12.0
+
+        fun parseToMinutes(iso: String?): Int? {
+            return try {
+                val timePart = iso?.split("T")?.getOrNull(1) ?: return null
+                val parts = timePart.split(":")
+                parts[0].toInt() * 60 + parts[1].toInt()
+            } catch (e: Exception) { null }
+        }
+
+        val riseMin = parseToMinutes(daily?.sunrise?.firstOrNull())
+        val setMin = parseToMinutes(daily?.sunset?.firstOrNull())
+
+        val locationMinutes = parseToMinutes(weather?.currentWeather?.time) ?: run {
+            val nowCal = Calendar.getInstance()
+            nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+        }
+
+        val daylightLabel = when {
+            riseMin == null || setMin == null -> "SUNRISE / SUNSET"
+            locationMinutes < (riseMin ?: 0) -> "SUNRISE"
+            locationMinutes < (setMin ?: 1440) -> "SUNSET"
+            else -> "SUNRISE"
+        }
 
         Column(modifier = Modifier.fillMaxSize()) {
             if (showHandle) {
@@ -100,80 +154,25 @@ fun WeatherDetailsSheet(
             }
             
             CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                LazyColumn(
-                    state = detailsListState,
-                    userScrollEnabled = isExpanded || !showHandle,
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = horizontalPadding),
-                    contentPadding = PaddingValues(
-                        top = if (showHandle) widgetGap else 0.dp,
-                        bottom = 180.dp
-                    ),
+                        .padding(horizontal = horizontalPadding)
+                        .verticalScroll(
+                            state = detailsScrollState,
+                            enabled = isExpanded || !showHandle
+                        ),
                     verticalArrangement = Arrangement.spacedBy(widgetGap)
                 ) {
-                if (headerContent != null) {
-                    item {
+                    Spacer(modifier = Modifier.height(if (showHandle) widgetGap else 0.dp))
+
+                    if (headerContent != null) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             headerContent()
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
-                }
 
-                val selectedLoc = uiState.selectedLocation
-                val key = selectedLoc?.let { "${it.lat},${it.lon}" }
-                val staleServeWindowMs = 12 * 60 * 60 * 1000L
-                val now = System.currentTimeMillis()
-
-                val rawWeather = key?.let { uiState.weatherMap[it] }
-                val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
-                val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
-                val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
-
-                val currentUsable = rawWeather?.currentWeather != null &&
-                    currentUpdatedAt > 0L &&
-                    now - currentUpdatedAt <= staleServeWindowMs
-                val hourlyUsable = rawWeather?.hourly != null &&
-                    hourlyUpdatedAt > 0L &&
-                    now - hourlyUpdatedAt <= staleServeWindowMs
-                val dailyUsable = rawWeather?.daily != null &&
-                    dailyUpdatedAt > 0L &&
-                    now - dailyUpdatedAt <= staleServeWindowMs
-
-                val weather = rawWeather?.copy(
-                    currentWeather = if (currentUsable) rawWeather.currentWeather else null,
-                    hourly = if (hourlyUsable) rawWeather.hourly else null,
-                    daily = if (dailyUsable) rawWeather.daily else null
-                )
-                
-                val daily = weather?.daily
-                val h = daily?.daylightDuration?.firstOrNull()?.div(3600.0) ?: 12.0
-                
-                fun parseToMinutes(iso: String?): Int? {
-                    return try {
-                        val timePart = iso?.split("T")?.getOrNull(1) ?: return null
-                        val parts = timePart.split(":")
-                        parts[0].toInt() * 60 + parts[1].toInt()
-                    } catch (e: Exception) { null }
-                }
-                
-                val riseMin = parseToMinutes(daily?.sunrise?.firstOrNull())
-                val setMin = parseToMinutes(daily?.sunset?.firstOrNull())
-                
-                val locationMinutes = parseToMinutes(weather?.currentWeather?.time) ?: run {
-                    val now = Calendar.getInstance()
-                    now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-                }
-
-                val daylightLabel = when {
-                    riseMin == null || setMin == null -> "SUNRISE / SUNSET"
-                    locationMinutes < (riseMin ?: 0) -> "SUNRISE"
-                    locationMinutes < (setMin ?: 1440) -> "SUNSET"
-                    else -> "SUNRISE"
-                }
-                
-                item {
                     DetailWidgetContainer(
                         label = "TEMPERATURE",
                         modifier = Modifier
@@ -191,9 +190,6 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                }
-
-                item {
                     DetailWidgetContainer(
                         label = "PRECIPITATION",
                         modifier = Modifier
@@ -210,9 +206,6 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                }
-
-                item {
                     DailyForecastWidget(
                         dates = weather?.daily?.time ?: emptyList(),
                         weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
@@ -222,9 +215,6 @@ fun WeatherDetailsSheet(
                         tempUnit = uiState.tempUnit,
                         modifier = Modifier.fillMaxWidth()
                     )
-                }
-
-                item {
                     HourlyForecastWidget(
                         times = weather?.hourly?.time ?: emptyList(),
                         weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
@@ -235,9 +225,6 @@ fun WeatherDetailsSheet(
                             .fillMaxWidth()
                             .height(squareSize)
                     )
-                }
-
-                item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(widgetGap)
@@ -291,9 +278,6 @@ fun WeatherDetailsSheet(
                             )
                         }
                     }
-                }
-
-                item {
                     DetailWidgetContainer(
                         label = daylightLabel,
                         modifier = Modifier
@@ -309,8 +293,9 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(180.dp))
                 }
-            }
             }
         }
 
