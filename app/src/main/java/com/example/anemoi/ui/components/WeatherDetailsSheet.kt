@@ -213,6 +213,31 @@ fun WeatherDetailsSheet(
                 }
 
                 item {
+                    DailyForecastWidget(
+                        dates = weather?.daily?.time ?: emptyList(),
+                        weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
+                        minTemperatures = weather?.daily?.minTemp ?: emptyList(),
+                        maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
+                        precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
+                        tempUnit = uiState.tempUnit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                item {
+                    HourlyForecastWidget(
+                        times = weather?.hourly?.time ?: emptyList(),
+                        weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
+                        temperatures = weather?.hourly?.temperatures ?: emptyList(),
+                        tempUnit = uiState.tempUnit,
+                        isExpanded = isExpanded,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize)
+                    )
+                }
+
+                item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(widgetGap)
@@ -284,31 +309,6 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                }
-
-                item {
-                    HourlyForecastWidget(
-                        times = weather?.hourly?.time ?: emptyList(),
-                        weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
-                        temperatures = weather?.hourly?.temperatures ?: emptyList(),
-                        tempUnit = uiState.tempUnit,
-                        isExpanded = isExpanded,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(squareSize)
-                    )
-                }
-
-                item {
-                    DailyForecastWidget(
-                        dates = weather?.daily?.time ?: emptyList(),
-                        weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
-                        minTemperatures = weather?.daily?.minTemp ?: emptyList(),
-                        maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
-                        precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
-                        tempUnit = uiState.tempUnit,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
             }
