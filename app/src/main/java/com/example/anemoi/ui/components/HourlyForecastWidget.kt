@@ -262,8 +262,9 @@ fun HourlyForecastWidget(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(vertical = 12.dp, horizontal = 6.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                            .padding(vertical = 10.dp, horizontal = 6.dp)
+                                            .offset(y = (-2).dp),
+                                        verticalArrangement = Arrangement.Center
                                     ) {
                                         Text(
                                             text = formatTemp(item.temperature, tempUnit),
