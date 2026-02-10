@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.androidx.work.runtime.ktx)
     
     // Maps
     implementation(libs.osmdroid.android)

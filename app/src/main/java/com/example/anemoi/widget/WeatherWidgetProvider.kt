@@ -36,11 +36,17 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 class WeatherWidgetProvider : AppWidgetProvider() {
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
+    }
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
+        WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
         scope.launch {
             updateWidgets(
                 context = context.applicationContext,
@@ -57,6 +63,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         newOptions: Bundle
     ) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
         scope.launch {
             updateWidgets(
                 context = context.applicationContext,
@@ -71,6 +78,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         appWidgetIds.forEach { appWidgetId ->
             WidgetLocationStore.removeLocation(context, appWidgetId)
         }
+        WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        WidgetRefreshScheduler.cancel(context.applicationContext)
     }
 
     companion object {
@@ -78,6 +91,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         private val widgetIconTintColor = Color.parseColor("#D6D9DE")
 
         fun requestUpdate(context: Context) {
+            WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
             scope.launch {
                 updateAllWidgets(context.applicationContext)
             }
