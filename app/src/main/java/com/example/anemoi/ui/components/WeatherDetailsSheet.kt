@@ -295,7 +295,7 @@ fun WeatherDetailsSheet(
                         isExpanded = isExpanded,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(115.dp)
+                            .height(squareSize)
                     )
                 }
 

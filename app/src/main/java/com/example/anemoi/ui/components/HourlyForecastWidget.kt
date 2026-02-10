@@ -37,6 +37,7 @@ import com.example.anemoi.util.formatTemp
 import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 @Composable
 fun HourlyForecastWidget(
@@ -147,103 +148,170 @@ fun HourlyForecastWidget(
         }
 
         if (forecastItems.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No forecast data available", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+            Column(modifier = Modifier.fillMaxSize()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "HOURLY FORECAST",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No forecast data available", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
         } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                0f to Color.Transparent,
-                                0.08f to Color.Black,
-                                0.92f to Color.Black,
-                                1f to Color.Transparent
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    }
-            ) {
-                LazyRow(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    // Standard padding allows the dividers to be exactly 18dp from the edge
-                    contentPadding = PaddingValues(horizontal = contentPaddingStart),
-                    horizontalArrangement = Arrangement.spacedBy(itemSpacing)
-                ) {
-                    item { EndDivider() }
+            Column(modifier = Modifier.fillMaxSize()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "HOURLY FORECAST",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    itemsIndexed(forecastItems) { _, item ->
-                        Box(
-                            modifier = Modifier
-                                .width(itemWidth)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(16.dp))
-                        ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    0f to Color.Transparent,
+                                    0.08f to Color.Black,
+                                    0.92f to Color.Black,
+                                    1f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+                ) {
+                    LazyRow(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        contentPadding = PaddingValues(
+                            start = contentPaddingStart,
+                            end = contentPaddingStart,
+                            top = 8.dp,
+                            bottom = 8.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(itemSpacing)
+                    ) {
+                        item { EndDivider() }
+
+                        itemsIndexed(forecastItems) { index, item ->
+                            val layoutInfo = listState.layoutInfo
+                            val viewportCenter =
+                                (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+                            val listItemInfo = layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.index == index + 1 } // +1 because leading divider item
+                            val itemCenter = listItemInfo?.let { it.offset + (it.size / 2f) } ?: viewportCenter
+                            val distanceFromCenter = itemCenter - viewportCenter
+                            val normalizedDistance = (distanceFromCenter / (layoutInfo.viewportEndOffset * 0.42f))
+                                .coerceIn(-1f, 1f)
+                            val absDistance = abs(normalizedDistance)
+
+                            val itemScale = (1f - (0.18f * absDistance)).coerceAtLeast(0.82f)
+                            val itemAlpha = 1f - (0.30f * absDistance)
+                            val itemYOffset = 6f * absDistance
+                            val tileShape = RoundedCornerShape(16.dp)
+
                             Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .blur(10.dp)
-                                    .background(
-                                        if (item.isCurrent) Color.White.copy(alpha = 0.22f)
-                                        else Color.White.copy(alpha = 0.1f)
-                                    )
-                            )
-                            
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.Center
+                                    .width(itemWidth)
+                                    .fillMaxHeight()
+                                    .clip(tileShape)
                             ) {
-                                Text(
-                                    text = formatTemp(item.temperature, tempUnit),
-                                    color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
-                                    fontSize = 13.sp,
-                                    fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    textAlign = TextAlign.Center
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            scaleX = itemScale
+                                            scaleY = itemScale
+                                            alpha = itemAlpha
+                                            translationY = itemYOffset
+                                        }
+                                        .clip(tileShape)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .blur(10.dp)
+                                            .background(
+                                                if (item.isCurrent) Color.White.copy(alpha = 0.22f)
+                                                else Color.White.copy(alpha = 0.1f)
+                                            )
+                                    )
 
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                val iconResId = remember(item.weatherCode) {
-                                    getWeatherIconRes(item.weatherCode, context)
-                                }
-                                
-                                Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                                    if (iconResId != 0) {
-                                        Image(
-                                            painter = painterResource(id = iconResId),
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(vertical = 12.dp, horizontal = 6.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = formatTemp(item.temperature, tempUnit),
+                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
+                                            fontSize = 13.sp,
+                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                            textAlign = TextAlign.Center
                                         )
-                                    } else {
-                                        FallbackCircle()
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        val iconResId = remember(item.weatherCode) {
+                                            getWeatherIconRes(item.weatherCode, context)
+                                        }
+
+                                        Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                                            if (iconResId != 0) {
+                                                Image(
+                                                    painter = painterResource(id = iconResId),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                                                )
+                                            } else {
+                                                FallbackCircle()
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = item.displayHour,
+                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
+                                            fontSize = 14.sp,
+                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = item.displayHour,
-                                    color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
-                                    fontSize = 14.sp,
-                                    fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
                             }
                         }
-                    }
 
-                    item { EndDivider() }
+                        item { EndDivider() }
+                    }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
