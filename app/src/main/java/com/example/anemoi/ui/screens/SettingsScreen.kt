@@ -298,43 +298,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     }
                     
                     Text(
-                        "Experimental Features",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                    )
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Experimental Mode", color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("Enable simulated pings and wind-powder blip effects.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
-                            }
-                            Switch(
-                                checked = uiState.experimentalEnabled,
-                                onCheckedChange = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.setExperimentalEnabled(it)
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color.White.copy(alpha = 0.4f),
-                                    uncheckedThumbColor = Color.White.copy(alpha = 0.4f),
-                                    uncheckedTrackColor = Color.Transparent
-                                )
-                            )
-                        }
-                    }
-
-                    Text(
                         "About Privacy Mode",
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 14.sp,

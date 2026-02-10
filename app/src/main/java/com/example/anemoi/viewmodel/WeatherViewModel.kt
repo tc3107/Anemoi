@@ -107,8 +107,7 @@ data class WeatherUiState(
     val obfuscationMode: ObfuscationMode = ObfuscationMode.PRECISE,
     val gridKm: Float = 5.0f,
     val lastResponseCoords: Pair<Double, Double>? = null,
-    val responseAnimTrigger: Long = 0L,
-    val experimentalEnabled: Boolean = false
+    val responseAnimTrigger: Long = 0L
 )
 
 private enum class RefreshTrigger {
@@ -244,7 +243,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val favoritesKey = stringPreferencesKey("favorites_json")
     private val obfuscationModeKey = stringPreferencesKey("obfuscation_mode")
     private val gridKmKey = floatPreferencesKey("grid_km")
-    private val experimentalKey = booleanPreferencesKey("experimental_enabled")
     private val persistedCacheKey = stringPreferencesKey("persisted_cache_v2")
 
     private val whitespaceRegex = Regex("\\s+")
@@ -368,8 +366,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
                     searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
                     obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
-                    gridKm = prefs[gridKmKey] ?: 5.0f,
-                    experimentalEnabled = prefs[experimentalKey] ?: false
+                    gridKm = prefs[gridKmKey] ?: 5.0f
                 )
             }
             refreshActiveRequestSignature()
@@ -959,14 +956,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 force = true,
                 bypassLocationGateIfDistanceOverKm = perLocationGateBypassDistanceKm
             )
-        }
-    }
-
-    fun setExperimentalEnabled(enabled: Boolean) {
-        addLog("Experimental features: $enabled")
-        _uiState.update { it.copy(experimentalEnabled = enabled) }
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[experimentalKey] = enabled }
         }
     }
 
