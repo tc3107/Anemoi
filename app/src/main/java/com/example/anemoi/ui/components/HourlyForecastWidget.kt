@@ -20,18 +20,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Velocity
 import com.example.anemoi.data.TempUnit
 import com.example.anemoi.util.formatTemp
 import java.util.Calendar
@@ -87,6 +92,29 @@ fun HourlyForecastWidget(
     val listState = rememberLazyListState()
     val currentIndex = remember(forecastItems) { forecastItems.indexOfFirst { it.isCurrent } }
     val surfaceShape = RoundedCornerShape(28.dp)
+    val blockParentPagerScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source != NestedScrollSource.UserInput || available.x == 0f) {
+                    return Offset.Zero
+                }
+                // Consume horizontal leftovers from edge drags so page swipes don't trigger.
+                return Offset(x = available.x, y = 0f)
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                if (available.x == 0f) {
+                    return Velocity.Zero
+                }
+                // Also absorb horizontal fling leftovers at row edges.
+                return Velocity(x = available.x, y = 0f)
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -186,6 +214,7 @@ fun HourlyForecastWidget(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .nestedScroll(blockParentPagerScroll)
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                         .drawWithContent {
                             drawContent()
