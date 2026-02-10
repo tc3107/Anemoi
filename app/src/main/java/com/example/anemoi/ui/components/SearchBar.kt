@@ -155,13 +155,6 @@ fun SearchBar(
                 .height(1.dp)
                 .background(Color.White.copy(alpha = 0.26f))
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
 
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

@@ -41,6 +41,7 @@ fun MapBackground(
     lastResponseCoords: Pair<Double, Double>? = null,
     responseAnimTrigger: Long = 0L,
     shouldAnimate: Boolean = true,
+    freezeCameraUpdates: Boolean = false,
     interactionEnabled: Boolean = true
 ) {
     val mapSwitchDebounceMs = 180L
@@ -234,7 +235,18 @@ fun MapBackground(
                 },
                 update = { view ->
                     view.setOnTouchListener { _, _ -> !interactionEnabled }
-                    view.controller.setZoom(zoom.toDouble())
+
+                    if (freezeCameraUpdates) {
+                        if (!view.isAnimating) {
+                            isMapMoving = false
+                        }
+                        return@AndroidView
+                    }
+
+                    val currentZoom = view.zoomLevelDouble
+                    if (abs(currentZoom - zoom.toDouble()) > 1e-3) {
+                        view.controller.setZoom(zoom.toDouble())
+                    }
                     
                     val currentTarget = appliedLat to appliedLon
                     val targetChanged = lastCenterTarget != currentTarget
@@ -252,7 +264,8 @@ fun MapBackground(
                         }
                     } else if (shouldAnimate) {
                         if (targetChanged) {
-                            view.controller.animateTo(appliedGeoPoint)
+                            // Snap instead of pan to avoid CPU-heavy camera animations while switching locations.
+                            view.controller.setCenter(appliedGeoPoint)
                             lastCenterTarget = currentTarget
                         } else if (!view.isAnimating && centerMismatch) {
                             // Recovery path: never allow map center to remain between two locations.

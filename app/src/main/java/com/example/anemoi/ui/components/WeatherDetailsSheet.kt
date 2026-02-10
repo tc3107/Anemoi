@@ -3,12 +3,16 @@ package com.example.anemoi.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,16 +28,20 @@ import androidx.compose.ui.unit.sp
 import com.example.anemoi.viewmodel.WeatherUiState
 import java.util.Calendar
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WeatherDetailsSheet(
     uiState: WeatherUiState,
     handleHeight: Dp,
     onHandleClick: () -> Unit,
     isExpanded: Boolean = false,
+    showHandle: Boolean = true,
+    resetScrollKey: Any? = Unit,
+    headerContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val detailsListState = rememberLazyListState()
+    val detailsListState = remember(resetScrollKey) { LazyListState() }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val widgetGap = 20.dp
         val horizontalPadding = 24.dp
@@ -42,62 +50,77 @@ fun WeatherDetailsSheet(
         val handleSurfaceShape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // Drag handle area (Fixed at the top of the sheet)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(handleHeight)
-                    .clip(handleSurfaceShape)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.22f),
-                                Color.White.copy(alpha = 0.12f),
-                                Color.White.copy(alpha = 0.05f)
+            if (showHandle) {
+                // Drag handle area (Fixed at the top of the sheet)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(handleHeight)
+                        .clip(handleSurfaceShape)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.22f),
+                                    Color.White.copy(alpha = 0.12f),
+                                    Color.White.copy(alpha = 0.05f)
+                                )
                             )
                         )
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.32f),
+                                    Color.White.copy(alpha = 0.08f)
+                                )
+                            ),
+                            shape = handleSurfaceShape
+                        )
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onHandleClick()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color.White.copy(alpha = 0.26f))
                     )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.32f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = handleSurfaceShape
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(2.5.dp))
+                            .background(Color.White.copy(alpha = 0.6f))
                     )
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onHandleClick()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color.White.copy(alpha = 0.26f))
-                )
-                Box(
-                    modifier = Modifier
-                        .width(48.dp)
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(2.5.dp))
-                        .background(Color.White.copy(alpha = 0.6f))
-                )
+                }
             }
             
-            LazyColumn(
-                state = detailsListState,
-                userScrollEnabled = isExpanded,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = horizontalPadding),
-                contentPadding = PaddingValues(top = widgetGap, bottom = 180.dp),
-                verticalArrangement = Arrangement.spacedBy(widgetGap)
-            ) {
+            CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+                LazyColumn(
+                    state = detailsListState,
+                    userScrollEnabled = isExpanded || !showHandle,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = horizontalPadding),
+                    contentPadding = PaddingValues(
+                        top = if (showHandle) widgetGap else 0.dp,
+                        bottom = 180.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(widgetGap)
+                ) {
+                if (headerContent != null) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            headerContent()
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+
                 val selectedLoc = uiState.selectedLocation
                 val key = selectedLoc?.let { "${it.lat},${it.lon}" }
                 val staleServeWindowMs = 12 * 60 * 60 * 1000L
@@ -287,6 +310,7 @@ fun WeatherDetailsSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
             }
         }
 
