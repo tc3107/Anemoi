@@ -39,39 +39,44 @@ fun HourlyForecastWidget(
     times: List<String>,
     weatherCodes: List<Int>,
     temperatures: List<Double>,
+    currentTimeIso: String? = null,
     tempUnit: TempUnit,
     modifier: Modifier = Modifier,
     isExpanded: Boolean = false
 ) {
-    val currentHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val todayDate = remember {
+    val fallbackHourKey = remember {
         val c = Calendar.getInstance()
         String.format(
             Locale.US,
-            "%04d-%02d-%02d",
+            "%04d-%02d-%02dT%02d",
             c.get(Calendar.YEAR),
-            c.get(Calendar.MONTH) + 1, 
-            c.get(Calendar.DAY_OF_MONTH)
+            c.get(Calendar.MONTH) + 1,
+            c.get(Calendar.DAY_OF_MONTH),
+            c.get(Calendar.HOUR_OF_DAY)
         )
     }
+    val currentHourKey = remember(currentTimeIso, fallbackHourKey) {
+        toHourKey(currentTimeIso) ?: fallbackHourKey
+    }
 
-    val forecastItems = remember(times, weatherCodes, temperatures, todayDate, currentHour) {
-        times.mapIndexedNotNull { index, timeStr ->
-            val separatorIndex = timeStr.indexOf('T')
-            if (separatorIndex <= 0 || separatorIndex + 3 >= timeStr.length) return@mapIndexedNotNull null
+    val forecastItems = remember(times, weatherCodes, temperatures, currentHourKey) {
+        if (times.isEmpty()) return@remember emptyList()
 
-            val date = timeStr.substring(0, separatorIndex)
-            if (date != todayDate) return@mapIndexedNotNull null
+        val startIndex = times.indexOfFirst { toHourKey(it) == currentHourKey }
+            .takeIf { it >= 0 }
+            ?: 0
+        val endExclusive = (startIndex + 24).coerceAtMost(times.size)
 
-            val hour = timeStr.substring(separatorIndex + 1, separatorIndex + 3).toIntOrNull()
-                ?: return@mapIndexedNotNull null
+        (startIndex until endExclusive).mapNotNull { index ->
+            val timeStr = times[index]
+            val hour = extractHour(timeStr) ?: return@mapNotNull null
 
             HourlyForecastItem(
-                displayHour = if (hour == currentHour) "Now" else String.format(Locale.US, "%02d", hour),
+                displayHour = if (index == startIndex) "Now" else String.format(Locale.US, "%02d", hour),
                 fullTime = timeStr,
                 weatherCode = weatherCodes.getOrNull(index) ?: -1,
                 temperature = temperatures.getOrNull(index) ?: 0.0,
-                isCurrent = hour == currentHour
+                isCurrent = index == startIndex
             )
         }
     }
@@ -405,3 +410,16 @@ private data class HourlyForecastItem(
     val temperature: Double,
     val isCurrent: Boolean
 )
+
+private fun toHourKey(timeIso: String?): String? {
+    if (timeIso.isNullOrBlank()) return null
+    val separatorIndex = timeIso.indexOf('T')
+    if (separatorIndex <= 0 || separatorIndex + 3 > timeIso.length) return null
+    return timeIso.substring(0, separatorIndex + 3)
+}
+
+private fun extractHour(timeIso: String): Int? {
+    val separatorIndex = timeIso.indexOf('T')
+    if (separatorIndex <= 0 || separatorIndex + 3 > timeIso.length) return null
+    return timeIso.substring(separatorIndex + 1, separatorIndex + 3).toIntOrNull()
+}

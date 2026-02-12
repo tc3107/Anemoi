@@ -219,6 +219,7 @@ fun WeatherDetailsSheet(
                         times = weather?.hourly?.time ?: emptyList(),
                         weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
                         temperatures = weather?.hourly?.temperatures ?: emptyList(),
+                        currentTimeIso = weather?.currentWeather?.time,
                         tempUnit = uiState.tempUnit,
                         isExpanded = isExpanded,
                         modifier = Modifier
