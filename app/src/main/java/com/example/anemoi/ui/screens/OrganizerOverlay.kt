@@ -19,7 +19,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -42,9 +41,7 @@ fun OrganizerOverlay(
     onToggleFavorite: (LocationItem) -> Unit,
     onRenameLocation: (LocationItem, String?) -> Unit,
     onSelect: (LocationItem) -> Unit,
-    onClose: () -> Unit,
-    blurStrength: Float,
-    tintAlpha: Float
+    onClose: () -> Unit
 ) {
     val listState = rememberLazyListState()
     val items = remember { mutableStateListOf<LocationItem>().apply { addAll(favorites) } }
@@ -74,15 +71,6 @@ fun OrganizerOverlay(
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .clip(surfaceShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.22f),
-                            Color.White.copy(alpha = 0.12f),
-                            Color.White.copy(alpha = 0.05f)
-                        )
-                    )
-                )
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
@@ -94,12 +82,6 @@ fun OrganizerOverlay(
                     shape = surfaceShape
                 )
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(blurStrength.dp)
-                    .background(Color.White.copy(alpha = tintAlpha))
-            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)

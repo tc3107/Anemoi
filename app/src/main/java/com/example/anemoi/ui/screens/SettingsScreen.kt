@@ -13,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -40,8 +39,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val settingsScrollState = rememberScrollState()
     var didAutoScrollToWarnings by remember(uiState.isSettingsOpen) { mutableStateOf(false) }
 
-    val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
-    val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
     val surfaceShape = RoundedCornerShape(32.dp)
     val staleServeWindowMs = 12 * 60 * 60 * 1000L
     val currentThresholdMs = 5 * 60 * 1000L
@@ -125,15 +122,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
                 .clip(surfaceShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.22f),
-                            Color.White.copy(alpha = 0.12f),
-                            Color.White.copy(alpha = 0.05f)
-                        )
-                    )
-                )
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
@@ -145,13 +133,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     shape = surfaceShape
                 )
         ) {
-            // Glassmorphic background
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(currentBlurStrength.dp)
-                    .background(Color.White.copy(alpha = currentTintAlpha))
-            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)

@@ -21,7 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.anemoi.data.LocationItem
+import com.example.anemoi.ui.components.DynamicWeatherBackground
 import com.example.anemoi.ui.components.MapBackground
 import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
@@ -239,18 +239,10 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 )
             }
         } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF0F2027),
-                                Color(0xFF203A43),
-                                Color(0xFF2C5364)
-                            )
-                        )
-                    )
+            DynamicWeatherBackground(
+                weatherCode = warningWeather?.currentWeather?.weatherCode,
+                weatherTimeIso = warningWeather?.currentWeather?.time,
+                modifier = Modifier.fillMaxSize()
             )
         }
 
@@ -473,9 +465,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     viewModel.onLocationSelected(location)
                     viewModel.toggleOrganizerMode(false)
                 },
-                onClose = { viewModel.toggleOrganizerMode(false) },
-                blurStrength = currentBlurStrength,
-                tintAlpha = currentTintAlpha
+                onClose = { viewModel.toggleOrganizerMode(false) }
             )
         }
 
