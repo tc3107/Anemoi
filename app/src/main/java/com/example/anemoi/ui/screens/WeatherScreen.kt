@@ -545,6 +545,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 onToggleFavorite = viewModel::toggleFavorite,
                 onRenameLocation = viewModel::renameLocationDisplayName,
                 onSelect = { location ->
+                    if (uiState.isFollowMode) {
+                        viewModel.setFollowMode(false, context)
+                    }
                     viewModel.onLocationSelected(location)
                     viewModel.toggleOrganizerMode(false)
                 },
