@@ -23,7 +23,9 @@ import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.formatTemp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -89,11 +91,19 @@ class WeatherWidgetProvider : AppWidgetProvider() {
     companion object {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val widgetIconTintColor = Color.parseColor("#D6D9DE")
+        private const val updateDebounceMs = 350L
+        private val updateLock = Any()
+        private var pendingUpdateJob: Job? = null
 
         fun requestUpdate(context: Context) {
-            WidgetRefreshScheduler.ensureScheduled(context.applicationContext)
-            scope.launch {
-                updateAllWidgets(context.applicationContext)
+            val appContext = context.applicationContext
+            WidgetRefreshScheduler.ensureScheduled(appContext)
+            synchronized(updateLock) {
+                pendingUpdateJob?.cancel()
+                pendingUpdateJob = scope.launch {
+                    delay(updateDebounceMs)
+                    updateAllWidgets(appContext)
+                }
             }
         }
 
@@ -116,8 +126,9 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 return
             }
 
+            val snapshotReader = WeatherWidgetSnapshotReader(context)
             appWidgetIds.forEach { appWidgetId ->
-                val snapshot = WeatherWidgetSnapshotReader(context).read(appWidgetId)
+                val snapshot = snapshotReader.read(appWidgetId)
                 val widthTier = resolveWidthTier(appWidgetManager, appWidgetId)
                 appWidgetManager.updateAppWidget(
                     appWidgetId,
@@ -336,6 +347,10 @@ private data class WeatherWidgetSnapshot(
 
 private class WeatherWidgetSnapshotReader(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
+    private var hasLoadedPrefs = false
+    private var cachedPrefs: Preferences? = null
+    private var cachedEncodedState: String? = null
+    private var cachedWeatherByLocationKey: Map<String, PersistedWeatherEntrySnapshot> = emptyMap()
 
     private val lastLocationKey = stringPreferencesKey("last_location")
     private val liveLocationKey = stringPreferencesKey("live_location")
@@ -343,9 +358,7 @@ private class WeatherWidgetSnapshotReader(private val context: Context) {
     private val persistedCacheKey = stringPreferencesKey("persisted_cache_v2")
 
     suspend fun read(appWidgetId: Int): WeatherWidgetSnapshot {
-        val prefs = runCatching {
-            context.dataStore.data.firstOrNull()
-        }.getOrNull() ?: return placeholderSnapshot()
+        val prefs = loadPrefs() ?: return placeholderSnapshot()
 
         val selection = WidgetLocationStore.loadSelection(context, appWidgetId)
         val selectedLocation = when (selection) {
@@ -448,13 +461,36 @@ private class WeatherWidgetSnapshotReader(private val context: Context) {
         location: LocationItem
     ): PersistedWeatherEntrySnapshot? {
         val encodedState = prefs[persistedCacheKey] ?: return null
-        val persistedState = runCatching {
-            json.decodeFromString<PersistedWeatherStateSnapshot>(encodedState)
-        }.getOrNull() ?: return null
+        ensurePersistedStateLoaded(encodedState)
 
         val key = "${location.lat},${location.lon}"
-        return persistedState.weatherEntries
-            .firstOrNull { it.key == key }
+        return cachedWeatherByLocationKey[key]
+    }
+
+    private suspend fun loadPrefs(): Preferences? {
+        if (!hasLoadedPrefs) {
+            cachedPrefs = runCatching {
+                context.dataStore.data.firstOrNull()
+            }.getOrNull()
+            hasLoadedPrefs = true
+        }
+        return cachedPrefs
+    }
+
+    private fun ensurePersistedStateLoaded(encodedState: String) {
+        if (cachedEncodedState == encodedState) {
+            return
+        }
+
+        cachedEncodedState = encodedState
+        val persistedState = runCatching {
+            json.decodeFromString<PersistedWeatherStateSnapshot>(encodedState)
+        }.getOrNull()
+
+        cachedWeatherByLocationKey = persistedState
+            ?.weatherEntries
+            ?.associateBy { it.key }
+            .orEmpty()
     }
 
     private fun buildUpdatedShortText(updatedAtMs: Long): String {

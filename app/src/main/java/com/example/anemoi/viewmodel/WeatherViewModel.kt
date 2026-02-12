@@ -272,6 +272,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val searchDebounceMs = 350L
 
     private val backoffStepsMs = longArrayOf(5_000L, 15_000L, 60_000L, 5 * 60_000L)
+    private val maxDebugLogEntries = 300
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
@@ -694,7 +695,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun saveLastLocation(location: LocationItem) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             applicationContext.dataStore.edit { settings ->
                 settings[lastLocationKey] = json.encodeToString(location)
             }
@@ -703,7 +704,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun saveSearchedLocation(location: LocationItem?) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             applicationContext.dataStore.edit { settings ->
                 if (location != null) {
                     settings[searchedLocationKey] = json.encodeToString(location)
@@ -715,7 +716,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun saveLiveLocation(location: LocationItem?) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             applicationContext.dataStore.edit { settings ->
                 if (location != null) {
                     settings[liveLocationKey] = json.encodeToString(location)
@@ -753,18 +754,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private suspend fun persistCachesNow() {
         val state = _uiState.value
-        val weatherEntries = state.weatherMap.map { (key, weather) ->
-            PersistedWeatherEntry(
-                key = key,
-                weather = weather,
-                currentUpdatedAt = state.currentUpdateTimeMap[key] ?: 0L,
-                hourlyUpdatedAt = state.hourlyUpdateTimeMap[key] ?: 0L,
-                dailyUpdatedAt = state.dailyUpdateTimeMap[key] ?: 0L,
-                signature = state.cacheSignatureMap[key] ?: activeRequestSignature(state)
-            )
-        }
-
-        val searchEntries = searchQueryCache.map { (query, entry) ->
+        val weatherMapSnapshot = state.weatherMap
+        val currentUpdateSnapshot = state.currentUpdateTimeMap
+        val hourlyUpdateSnapshot = state.hourlyUpdateTimeMap
+        val dailyUpdateSnapshot = state.dailyUpdateTimeMap
+        val signatureSnapshot = state.cacheSignatureMap
+        val activeSignature = activeRequestSignature(state)
+        val searchEntriesSnapshot = searchQueryCache.map { (query, entry) ->
             PersistedSearchEntry(
                 query = query,
                 normalizedQuery = entry.normalizedQuery,
@@ -772,8 +768,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 suggestions = entry.suggestions
             )
         }
-
-        val placeEntries = placeIdCache.map { (placeId, entry) ->
+        val placeEntriesSnapshot = placeIdCache.map { (placeId, entry) ->
             PersistedPlaceEntry(
                 placeId = placeId,
                 displayName = entry.displayName,
@@ -783,16 +778,31 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             )
         }
 
-        val payload = json.encodeToString(
-            PersistedWeatherState(
-                weatherEntries = weatherEntries,
-                searchEntries = searchEntries,
-                placeEntries = placeEntries
-            )
-        )
+        val payload = withContext(Dispatchers.Default) {
+            val weatherEntries = weatherMapSnapshot.map { (key, weather) ->
+                PersistedWeatherEntry(
+                    key = key,
+                    weather = weather,
+                    currentUpdatedAt = currentUpdateSnapshot[key] ?: 0L,
+                    hourlyUpdatedAt = hourlyUpdateSnapshot[key] ?: 0L,
+                    dailyUpdatedAt = dailyUpdateSnapshot[key] ?: 0L,
+                    signature = signatureSnapshot[key] ?: activeSignature
+                )
+            }
 
-        applicationContext.dataStore.edit { prefs ->
-            prefs[persistedCacheKey] = payload
+            json.encodeToString(
+                PersistedWeatherState(
+                    weatherEntries = weatherEntries,
+                    searchEntries = searchEntriesSnapshot,
+                    placeEntries = placeEntriesSnapshot
+                )
+            )
+        }
+
+        withContext(Dispatchers.IO) {
+            applicationContext.dataStore.edit { prefs ->
+                prefs[persistedCacheKey] = payload
+            }
         }
     }
 
@@ -931,7 +941,19 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun addLog(message: String) {
         Log.d(tag, message)
-        _debugLogs.update { listOf("${System.currentTimeMillis() % 100000}: $message") + it }
+        val entry = "${System.currentTimeMillis() % 100000}: $message"
+        _debugLogs.update { existing ->
+            val keepCount = (maxDebugLogEntries - 1).coerceAtLeast(0)
+            val retained = if (existing.size > keepCount) {
+                existing.take(keepCount)
+            } else {
+                existing
+            }
+            buildList(capacity = retained.size + 1) {
+                add(entry)
+                addAll(retained)
+            }
+        }
     }
 
     fun toggleSettings(open: Boolean) {
