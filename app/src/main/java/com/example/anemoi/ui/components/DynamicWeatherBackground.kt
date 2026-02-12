@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,6 +60,13 @@ fun DynamicWeatherBackground(
             pageKey = pageKey
         )
         NoiseLayer(alpha = style.noiseAlpha)
+        if (style.overallDimAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = style.overallDimAlpha))
+            )
+        }
     }
 }
 
@@ -719,6 +727,7 @@ private fun snowyStyle() = BackgroundStyle(
     glowColor = Color(0xFFEAF6FF).copy(alpha = 0.16f),
     particleMode = ParticleMode.SNOW,
     noiseAlpha = 0.06f,
+    overallDimAlpha = 0.08f,
     gradientDurationMs = 20000,
     blobs = listOf(
         BlobSpec(
@@ -972,6 +981,7 @@ private data class BackgroundStyle(
     val rainIntensity: Float = 1f,
     val sunRays: SunRaysSpec? = null,
     val noiseAlpha: Float,
+    val overallDimAlpha: Float = 0f,
     val gradientDurationMs: Int,
     val blobs: List<BlobSpec>
 )
