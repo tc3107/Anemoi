@@ -67,7 +67,7 @@ fun HourlyForecastWidget(
             ?: 0
         val endExclusive = (startIndex + 24).coerceAtMost(times.size)
 
-        (startIndex until endExclusive).mapNotNull { index ->
+        val rawItems = (startIndex until endExclusive).mapNotNull { index ->
             val timeStr = times[index]
             val hour = extractHour(timeStr) ?: return@mapNotNull null
 
@@ -79,6 +79,7 @@ fun HourlyForecastWidget(
                 isCurrent = index == startIndex
             )
         }
+        collapseConditionRepeats(rawItems)
     }
 
     val currentIndex = remember(forecastItems) { forecastItems.indexOfFirst { it.isCurrent } }
@@ -357,12 +358,7 @@ private fun EndDivider() {
 }
 
 private fun getWeatherIconRes(code: Int): Int {
-    val normalizedCode = when (code) {
-        56, 57 -> 55
-        63 -> 62
-        72 -> 73
-        else -> code
-    }
+    val normalizedCode = normalizeWeatherCode(code)
     return when (normalizedCode) {
         0 -> R.drawable.wmo_0
         1 -> R.drawable.wmo_1
@@ -391,6 +387,30 @@ private fun getWeatherIconRes(code: Int): Int {
         96 -> R.drawable.wmo_96
         99 -> R.drawable.wmo_99
         else -> 0
+    }
+}
+
+private fun collapseConditionRepeats(items: List<HourlyForecastItem>): List<HourlyForecastItem> {
+    if (items.isEmpty()) return emptyList()
+    val result = ArrayList<HourlyForecastItem>(items.size)
+    var lastConditionCode: Int? = null
+
+    for (item in items) {
+        val normalized = normalizeWeatherCode(item.weatherCode)
+        if (lastConditionCode == null || normalized != lastConditionCode) {
+            result += item
+            lastConditionCode = normalized
+        }
+    }
+    return result
+}
+
+private fun normalizeWeatherCode(code: Int): Int {
+    return when (code) {
+        56, 57 -> 55
+        63 -> 62
+        72 -> 73
+        else -> code
     }
 }
 

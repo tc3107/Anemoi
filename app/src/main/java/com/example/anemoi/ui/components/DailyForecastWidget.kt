@@ -462,8 +462,7 @@ private fun DailyForecastDetailPanel(
                 )
                 DailyDetailMode.CONDITIONS -> DailyConditionsDetail(
                     dayHourlyPoints = dayHourlyPoints,
-                    dayGraphCurrentTimeIso = dayGraphCurrentTimeIso,
-                    tempUnit = tempUnit
+                    dayGraphCurrentTimeIso = dayGraphCurrentTimeIso
                 )
             }
         }
@@ -620,12 +619,11 @@ private fun DailyPrecipitationDetail(
 @Composable
 private fun DailyConditionsDetail(
     dayHourlyPoints: List<DayHourlyPoint>,
-    dayGraphCurrentTimeIso: String?,
-    tempUnit: TempUnit
+    dayGraphCurrentTimeIso: String?
 ) {
     val context = LocalContext.current
     val compactPoints = remember(dayHourlyPoints) {
-        sampleDayHourlyPoints(dayHourlyPoints, maxItems = 8)
+        collapseDailyConditionRepeats(dayHourlyPoints)
     }
     if (compactPoints.isEmpty()) {
         DailyFallbackText("No hourly conditions data for this day.")
@@ -885,22 +883,19 @@ private fun resolveDayGraphCurrentTimeIso(
     return fallbackTimeIso
 }
 
-private fun sampleDayHourlyPoints(
-    points: List<DayHourlyPoint>,
-    maxItems: Int
-): List<DayHourlyPoint> {
-    if (points.isEmpty() || maxItems <= 0) return emptyList()
-    if (points.size <= maxItems) return points
+private fun collapseDailyConditionRepeats(points: List<DayHourlyPoint>): List<DayHourlyPoint> {
+    if (points.isEmpty()) return emptyList()
+    val result = ArrayList<DayHourlyPoint>(points.size)
+    var lastConditionCode: Int? = null
 
-    val lastIndex = points.lastIndex
-    val result = mutableListOf<DayHourlyPoint>()
-    for (i in 0 until maxItems) {
-        val mappedIndex = ((i.toFloat() / (maxItems - 1).coerceAtLeast(1)) * lastIndex)
-            .roundToInt()
-            .coerceIn(0, lastIndex)
-        result += points[mappedIndex]
+    for (point in points) {
+        val normalized = normalizeWeatherCode(point.weatherCode)
+        if (lastConditionCode == null || normalized != lastConditionCode) {
+            result += point
+            lastConditionCode = normalized
+        }
     }
-    return result.distinctBy { it.timeIso }
+    return result
 }
 
 private fun hourLabel(timeIso: String): String {
