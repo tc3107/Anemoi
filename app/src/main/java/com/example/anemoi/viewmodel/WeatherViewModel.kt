@@ -31,6 +31,7 @@ import com.example.anemoi.data.TempUnit
 import com.example.anemoi.data.WeatherResponse
 import com.example.anemoi.data.WindUnit
 import com.example.anemoi.util.ObfuscationMode
+import com.example.anemoi.util.CoordinateInputParser
 import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.obfuscateLocation
@@ -53,6 +54,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -75,6 +78,7 @@ import kotlin.math.max
 data class WeatherUiState(
     val searchQuery: String = "",
     val suggestions: List<LocationItem> = emptyList(),
+    val searchStatusMessage: String? = null,
     val favorites: List<LocationItem> = emptyList(),
     val searchedLocation: LocationItem? = null,
     val selectedLocation: LocationItem? = null,
@@ -181,6 +185,7 @@ private data class PersistedWeatherState(
 
 class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val tag = "WeatherViewModel"
+    private val geocodingTag = "AnemoiGeocode"
     private val json = Json { ignoreUnknownKeys = true }
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE })
@@ -270,9 +275,12 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val queryCacheTtlMs = 24 * 60 * 60 * 1000L
     private val placeCacheTtlMs = 30L * 24 * 60 * 60 * 1000L
     private val searchDebounceMs = 350L
+    private val geocodingMinIntervalMs = 1_100L
 
     private val backoffStepsMs = longArrayOf(5_000L, 15_000L, 60_000L, 5 * 60_000L)
     private val maxDebugLogEntries = 300
+    private val geocodingRateLimitMutex = Mutex()
+    private var lastGeocodingRequestAtMs = 0L
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
@@ -956,6 +964,44 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
+    private fun logGeocoding(message: String, throwable: Throwable? = null) {
+        if (throwable == null) {
+            Log.d(geocodingTag, message)
+        } else {
+            Log.e(geocodingTag, message, throwable)
+        }
+    }
+
+    private fun geocodingFailureMessage(error: Throwable): String {
+        return when (error) {
+            is SocketTimeoutException -> "Search timed out. Try again."
+            is IOException -> "No network connection."
+            is HttpException -> when (error.code()) {
+                403, 429, 509 -> "Search temporarily unavailable."
+                else -> "Search service unavailable."
+            }
+            else -> "Search failed. Try again."
+        }
+    }
+
+    private suspend fun awaitGeocodingRequestSlot(query: String) {
+        while (true) {
+            val waitMs = geocodingRateLimitMutex.withLock {
+                val now = System.currentTimeMillis()
+                val nextAllowedAt = lastGeocodingRequestAtMs + geocodingMinIntervalMs
+                if (now >= nextAllowedAt) {
+                    lastGeocodingRequestAtMs = now
+                    0L
+                } else {
+                    nextAllowedAt - now
+                }
+            }
+            if (waitMs <= 0L) return
+            logGeocoding("rate limit wait ${waitMs}ms query='$query'")
+            delay(waitMs)
+        }
+    }
+
     fun toggleSettings(open: Boolean) {
         _uiState.update { it.copy(isSettingsOpen = open) }
     }
@@ -1200,7 +1246,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val trimmed = query.trim()
         if (trimmed.isBlank()) {
             lastMeaningfulSearchQuery = ""
-            _uiState.update { it.copy(suggestions = emptyList()) }
+            _uiState.update { it.copy(suggestions = emptyList(), searchStatusMessage = null) }
+            logGeocoding("query cleared; suggestions reset")
             return
         }
 
@@ -1209,7 +1256,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
             val latestQuery = _uiState.value.searchQuery.trim()
             if (latestQuery.isBlank()) {
-                _uiState.update { it.copy(suggestions = emptyList()) }
+                _uiState.update { it.copy(suggestions = emptyList(), searchStatusMessage = null) }
+                logGeocoding("debounced query became blank; suggestions reset")
                 return@launch
             }
 
@@ -1218,43 +1266,121 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
             val normalized = normalizeQuery(latestQuery)
             if (normalized.isBlank()) {
-                _uiState.update { it.copy(suggestions = emptyList()) }
+                _uiState.update { it.copy(suggestions = emptyList(), searchStatusMessage = null) }
+                return@launch
+            }
+
+            val manualCoordinate = CoordinateInputParser.parse(latestQuery)
+            if (manualCoordinate != null) {
+                publishManualCoordinateSuggestion(manualCoordinate.lat, manualCoordinate.lon)
+                lastMeaningfulSearchQuery = normalized
+                logGeocoding(
+                    "manual coordinate parsed query='$latestQuery' " +
+                        "lat=${manualCoordinate.lat} lon=${manualCoordinate.lon}"
+                )
                 return@launch
             }
 
             val cachedEntry = searchQueryCache[latestQuery]
+                ?: searchQueryCache.values.firstOrNull { entry ->
+                    entry.normalizedQuery == normalized &&
+                        now - entry.cachedAt <= queryCacheTtlMs
+                }
             if (cachedEntry != null && now - cachedEntry.cachedAt <= queryCacheTtlMs) {
                 publishSuggestions(cachedEntry.suggestions)
+                _uiState.update {
+                    it.copy(searchStatusMessage = if (cachedEntry.suggestions.isEmpty()) "No results" else null)
+                }
                 lastMeaningfulSearchQuery = cachedEntry.normalizedQuery
                 addLog("Search cache hit for '$latestQuery'")
+                logGeocoding(
+                    "cache hit query='$latestQuery' normalized='${cachedEntry.normalizedQuery}' " +
+                        "suggestions=${cachedEntry.suggestions.size}"
+                )
                 return@launch
             }
 
-            if (normalized == lastMeaningfulSearchQuery) {
+            if (normalized == lastMeaningfulSearchQuery && _uiState.value.suggestions.isNotEmpty()) {
                 addLog("Search skipped; query has no meaningful change")
+                logGeocoding(
+                    "search skipped query='$latestQuery' normalized='$normalized' " +
+                        "existingSuggestions=${_uiState.value.suggestions.size}"
+                )
                 return@launch
             }
 
             try {
-                val response = nominatimService.search(latestQuery)
-                val suggestions = response.mapNotNull { buildCachedSuggestion(it, now) }
+                awaitGeocodingRequestSlot(latestQuery)
+                val activeQuery = _uiState.value.searchQuery.trim()
+                if (activeQuery != latestQuery) {
+                    logGeocoding("request aborted; query changed before dispatch from '$latestQuery' to '$activeQuery'")
+                    return@launch
+                }
+                logGeocoding("request start query='$activeQuery'")
+                val response = nominatimService.search(activeQuery)
+                val cacheNow = System.currentTimeMillis()
+                val suggestions = response.mapNotNull { buildCachedSuggestion(it, cacheNow) }
 
-                searchQueryCache[latestQuery] = SearchCacheEntry(
+                searchQueryCache[activeQuery] = SearchCacheEntry(
                     normalizedQuery = normalized,
-                    cachedAt = now,
+                    cachedAt = cacheNow,
                     suggestions = suggestions
                 )
                 publishSuggestions(suggestions)
+                _uiState.update {
+                    it.copy(searchStatusMessage = if (suggestions.isEmpty()) "No results" else null)
+                }
                 lastMeaningfulSearchQuery = normalized
+                logGeocoding(
+                    "request success query='$activeQuery' responseSize=${response.size} " +
+                        "mappedSuggestions=${suggestions.size}"
+                )
                 persistCachesSoon()
+            } catch (e: CancellationException) {
+                logGeocoding("request cancelled query='$latestQuery'")
+                throw e
             } catch (e: Exception) {
                 addLog("Search Error: ${e.message}")
+                _uiState.update { state ->
+                    val message = if (state.suggestions.isNotEmpty()) {
+                        "Search temporarily unavailable."
+                    } else {
+                        geocodingFailureMessage(e)
+                    }
+                    state.copy(searchStatusMessage = message)
+                }
+                logGeocoding("request failed query='$latestQuery': ${e.message}", e)
             }
         }
     }
 
     private fun normalizeQuery(query: String): String {
         return query.trim().lowercase(Locale.US).replace(whitespaceRegex, " ")
+    }
+
+    private fun publishManualCoordinateSuggestion(lat: Double, lon: Double) {
+        val baseSuggestion = LocationItem(
+            name = "${formatCoordinate(lat)}, ${formatCoordinate(lon)}",
+            lat = lat,
+            lon = lon
+        )
+        _uiState.update { state ->
+            val favoriteMatch = state.favorites.firstOrNull { locationKey(it) == locationKey(baseSuggestion) }
+            val mappedSuggestion = baseSuggestion.copy(
+                isFavorite = favoriteMatch != null,
+                customName = favoriteMatch?.customName
+            )
+            state.copy(
+                suggestions = listOf(mappedSuggestion),
+                searchStatusMessage = null
+            )
+        }
+    }
+
+    private fun formatCoordinate(value: Double): String {
+        val normalized = if (kotlin.math.abs(value) < 1e-9) 0.0 else value
+        val fixed = String.format(Locale.US, "%.6f", normalized)
+        return fixed.trimEnd('0').trimEnd('.')
     }
 
     private fun buildCachedSuggestion(response: GeocodingResponse, now: Long): CachedSuggestion? {
@@ -1390,6 +1516,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun onLocationSelected(location: LocationItem, isManualSearch: Boolean = true) {
         addLog("Location selected: ${location.name} (${location.lat}, ${location.lon})")
+        lastMeaningfulSearchQuery = ""
         val stateSnapshot = _uiState.value
         val targetKey = locationKey(location)
         val existingCustomName = stateSnapshot.favorites.firstOrNull { locationKey(it) == targetKey }?.customName
@@ -1422,6 +1549,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 searchedLocation = newSearchedLocation,
                 searchQuery = "",
                 suggestions = emptyList(),
+                searchStatusMessage = null,
                 favorites = updatedFavorites
             )
         }

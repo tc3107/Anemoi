@@ -2,17 +2,16 @@ package com.example.anemoi.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,26 +20,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.LocationItem
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     suggestions: List<LocationItem>,
+    searchStatusMessage: String?,
     favorites: List<LocationItem>,
     onLocationSelected: (LocationItem) -> Unit,
     onSettingsClick: () -> Unit,
@@ -64,6 +67,7 @@ fun SearchBar(
     var wasSearchFieldFocused by remember { mutableStateOf(false) }
     val isKeyboardVisible = WindowInsets.isImeVisible
     var hadVisibleKeyboardThisFocusSession by remember { mutableStateOf(false) }
+    var suppressNextKeyboardDismissClear by remember { mutableStateOf(false) }
 
     LaunchedEffect(isFocused) {
         if (isFocused) {
@@ -77,12 +81,18 @@ fun SearchBar(
     LaunchedEffect(isFocused, isKeyboardVisible) {
         if (!isFocused) {
             hadVisibleKeyboardThisFocusSession = false
+            suppressNextKeyboardDismissClear = false
             return@LaunchedEffect
         }
 
         if (isKeyboardVisible) {
             hadVisibleKeyboardThisFocusSession = true
         } else if (hadVisibleKeyboardThisFocusSession) {
+            if (suppressNextKeyboardDismissClear) {
+                suppressNextKeyboardDismissClear = false
+                hadVisibleKeyboardThisFocusSession = false
+                return@LaunchedEffect
+            }
             // Keyboard was open for this focus session and is now dismissed -> clear and deselect search.
             onQueryChange("")
             focusManager.clearFocus()
@@ -97,24 +107,23 @@ fun SearchBar(
     val surfaceShape = RoundedCornerShape(cornerSize)
 
     val shouldShowDropdown = isFocused && expanded && query.isNotEmpty() && suggestions.isNotEmpty()
-    val dropdownVisibleState = remember { MutableTransitionState(false) }
-    var renderedSuggestions by remember { mutableStateOf<List<LocationItem>>(emptyList()) }
-
-    LaunchedEffect(shouldShowDropdown) {
-        dropdownVisibleState.targetState = shouldShowDropdown
+    val shouldShowStatusMessage =
+        isFocused && expanded && query.isNotEmpty() && !searchStatusMessage.isNullOrBlank()
+    val dividerHeight = 1.dp
+    val suggestionRowHeight = 56.dp
+    val maxDropdownHeight = 300.dp
+    val targetRowsHeight = if (shouldShowDropdown) {
+        val unclamped = suggestionRowHeight * suggestions.size
+        if (unclamped > maxDropdownHeight - dividerHeight) maxDropdownHeight - dividerHeight else unclamped
+    } else {
+        0.dp
     }
-
-    LaunchedEffect(shouldShowDropdown, suggestions) {
-        if (shouldShowDropdown) {
-            renderedSuggestions = suggestions
-        }
-    }
-
-    LaunchedEffect(dropdownVisibleState.currentState, dropdownVisibleState.targetState) {
-        if (!dropdownVisibleState.currentState && !dropdownVisibleState.targetState) {
-            renderedSuggestions = emptyList()
-        }
-    }
+    val targetDropdownHeight = if (targetRowsHeight > 0.dp) dividerHeight + targetRowsHeight else 0.dp
+    val animatedDropdownHeight by animateDpAsState(
+        targetValue = targetDropdownHeight,
+        animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
+        label = "searchDropdownHeight"
+    )
 
     Box(
         modifier = Modifier
@@ -139,7 +148,6 @@ fun SearchBar(
                 ),
                 shape = surfaceShape
             )
-            .animateContentSize(animationSpec = tween(300))
     ) {
         // Background blur and tint
         Box(
@@ -189,6 +197,25 @@ fun SearchBar(
                         },
                     interactionSource = interactionSource,
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            suppressNextKeyboardDismissClear = true
+                            focusManager.clearFocus()
+                        },
+                        onDone = {
+                            suppressNextKeyboardDismissClear = true
+                            focusManager.clearFocus()
+                        },
+                        onGo = {
+                            suppressNextKeyboardDismissClear = true
+                            focusManager.clearFocus()
+                        },
+                        onSend = {
+                            suppressNextKeyboardDismissClear = true
+                            focusManager.clearFocus()
+                        }
+                    ),
                     cursorBrush = SolidColor(Color.White),
                     textStyle = TextStyle(
                         color = Color.White,
@@ -229,34 +256,36 @@ fun SearchBar(
                 }
             }
 
-            AnimatedVisibility(
-                visibleState = dropdownVisibleState,
-                enter = expandVertically(animationSpec = tween(300)) + fadeIn(),
-                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(animatedDropdownHeight)
+                    .clipToBounds()
             ) {
-                Column {
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 16.dp))
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                    ) {
-                        // Using a combination of index and name to ensure key uniqueness during search
-                        items(renderedSuggestions, key = { "${it.name}_${it.lat}_${it.lon}" }) { location ->
+                if (animatedDropdownHeight > 0.dp || shouldShowDropdown) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        suggestions.forEachIndexed { index, location ->
+                            val requiredHeight = dividerHeight + (suggestionRowHeight * (index + 1))
+                            val rowAlpha by animateFloatAsState(
+                                targetValue = if (animatedDropdownHeight >= requiredHeight) 1f else 0f,
+                                animationSpec = tween(durationMillis = 140),
+                                label = "suggestionRowAlpha$index"
+                            )
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateItem(
-                                        fadeInSpec = tween(300),
-                                        fadeOutSpec = tween(300),
-                                        placementSpec = tween(300)
-                                    )
+                                    .height(suggestionRowHeight)
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onLocationSelected(location)
                                         focusManager.clearFocus()
                                     }
-                                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                                    .padding(horizontal = 8.dp)
+                                    .graphicsLayer(alpha = rowAlpha),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 IconButton(onClick = {
@@ -280,6 +309,25 @@ fun SearchBar(
                             }
                         }
                     }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = shouldShowStatusMessage,
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = tween(180)) + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    HorizontalDivider(
+                        color = Color.White.copy(alpha = 0.1f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Text(
+                        text = searchStatusMessage.orEmpty(),
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
                 }
             }
         }

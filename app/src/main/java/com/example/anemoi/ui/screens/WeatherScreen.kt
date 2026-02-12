@@ -401,6 +401,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 query = uiState.searchQuery,
                                 onQueryChange = viewModel::onSearchQueryChanged,
                                 suggestions = uiState.suggestions,
+                                searchStatusMessage = uiState.searchStatusMessage,
                                 favorites = favorites,
                                 onLocationSelected = viewModel::onLocationSelected,
                                 onSettingsClick = { viewModel.toggleSettings(true) },

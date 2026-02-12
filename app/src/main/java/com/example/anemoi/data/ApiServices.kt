@@ -12,7 +12,7 @@ interface NominatimService {
         @Query("addressdetails") addressDetails: Int = 1,
         @Query("limit") limit: Int = 5,
         @Query("accept-language") language: String = "en",
-        @Header("User-Agent") userAgent: String = "AnemoiForecast/1.0",
+        @Header("User-Agent") userAgent: String = "Anemoi",
         @Header("Accept-Language") acceptLanguage: String = "en"
     ): List<GeocodingResponse>
 }
