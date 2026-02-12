@@ -1,8 +1,12 @@
 package com.example.anemoi.widget
 
+import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -19,7 +23,14 @@ import com.example.anemoi.data.WeatherResponse
 import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.obfuscateLocation
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -60,9 +71,22 @@ class WidgetWeatherRefreshWorker(
             return Result.success()
         }
 
+        val widgetIds = AppWidgetManager.getInstance(context)
+            .getAppWidgetIds(ComponentName(context, WeatherWidgetProvider::class.java))
+        val hasCurrentLocationWidget = widgetIds.any { appWidgetId ->
+            WidgetLocationStore.loadSelection(context, appWidgetId) == WidgetLocationSelection.CurrentLocation
+        }
+
         val prefs = context.dataStore.data.firstOrNull() ?: return Result.retry()
         val fallbackLastLocation = prefs[lastLocationKey]?.let(::decodeLocation)
-        val liveLocation = prefs[liveLocationKey]?.let(::decodeLocation)
+        var liveLocation = prefs[liveLocationKey]?.let(::decodeLocation)
+        if (hasCurrentLocationWidget) {
+            val refreshedLiveLocation = resolveFreshCurrentLocation(context)
+            if (refreshedLiveLocation != null && refreshedLiveLocation != liveLocation) {
+                liveLocation = refreshedLiveLocation
+                saveLiveLocation(context, refreshedLiveLocation)
+            }
+        }
         val obfuscationMode = prefs[obfuscationModeKey]
             ?.let { mode -> runCatching { ObfuscationMode.valueOf(mode) }.getOrNull() }
             ?: ObfuscationMode.PRECISE
@@ -72,8 +96,6 @@ class WidgetWeatherRefreshWorker(
             gridKm = gridKm
         )
 
-        val widgetIds = AppWidgetManager.getInstance(context)
-            .getAppWidgetIds(ComponentName(context, WeatherWidgetProvider::class.java))
         val targetLocations = widgetIds
             .toList()
             .mapNotNull { appWidgetId ->
@@ -143,6 +165,76 @@ class WidgetWeatherRefreshWorker(
 
         WeatherWidgetProvider.requestUpdate(context)
         return Result.success()
+    }
+
+    private suspend fun resolveFreshCurrentLocation(context: Context): LocationItem? {
+        val hasFinePermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasCoarsePermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFinePermission && !hasCoarsePermission) {
+            return null
+        }
+
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+        val priority = if (hasFinePermission) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+
+        val location = try {
+            val cts = CancellationTokenSource()
+            val current = withTimeoutOrNull(12_000L) {
+                fusedLocationClient.getCurrentLocation(priority, cts.token).await()
+            }
+            if (current == null) {
+                cts.cancel()
+                fusedLocationClient.lastLocation.await()
+            } else {
+                current
+            }
+        } catch (_: Exception) {
+            null
+        } ?: return null
+
+        val displayName = resolveLocationName(
+            context = context,
+            lat = location.latitude,
+            lon = location.longitude
+        )
+
+        return LocationItem(
+            name = displayName,
+            lat = location.latitude,
+            lon = location.longitude
+        )
+    }
+
+    private suspend fun saveLiveLocation(context: Context, location: LocationItem) {
+        context.dataStore.edit { settings ->
+            settings[liveLocationKey] = json.encodeToString(location)
+        }
+    }
+
+    private suspend fun resolveLocationName(context: Context, lat: Double, lon: Double): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(lat, lon, 1)
+                addresses?.firstOrNull()?.let {
+                    it.locality ?: it.subAdminArea ?: it.adminArea ?: "Current Location"
+                } ?: "Current Location"
+            } catch (_: Exception) {
+                "Current Location"
+            }
+        }
     }
 
     private fun decodeLocation(encoded: String): LocationItem? {

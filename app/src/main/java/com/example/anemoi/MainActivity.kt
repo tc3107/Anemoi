@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_WIDGET_LOCATION_LAT = "com.example.anemoi.extra.WIDGET_LOCATION_LAT"
         const val EXTRA_WIDGET_LOCATION_LON = "com.example.anemoi.extra.WIDGET_LOCATION_LON"
+        const val EXTRA_WIDGET_LOCATION_IS_CURRENT = "com.example.anemoi.extra.WIDGET_LOCATION_IS_CURRENT"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +62,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleWidgetLocationIntent(intent: Intent?) {
         val launchIntent = intent ?: return
+        val openAsCurrentLocationPage = launchIntent.getBooleanExtra(EXTRA_WIDGET_LOCATION_IS_CURRENT, false)
         if (!launchIntent.hasExtra(EXTRA_WIDGET_LOCATION_LAT) || !launchIntent.hasExtra(EXTRA_WIDGET_LOCATION_LON)) {
+            if (openAsCurrentLocationPage) {
+                weatherViewModel.openCurrentLocationPageFromWidget(applicationContext)
+            }
             return
         }
 
@@ -71,6 +76,11 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        weatherViewModel.openLocationFromWidget(lat, lon, applicationContext)
+        weatherViewModel.openLocationFromWidget(
+            lat = lat,
+            lon = lon,
+            context = applicationContext,
+            openAsCurrentLocationPage = openAsCurrentLocationPage
+        )
     }
 }

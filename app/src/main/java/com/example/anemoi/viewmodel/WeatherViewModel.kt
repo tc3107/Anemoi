@@ -1310,7 +1310,44 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    fun openLocationFromWidget(lat: Double, lon: Double, context: Context) {
+    fun openLocationFromWidget(
+        lat: Double,
+        lon: Double,
+        context: Context,
+        openAsCurrentLocationPage: Boolean = false
+    ) {
+        val targetLocation = resolveWidgetTargetLocation(lat, lon)
+        if (openAsCurrentLocationPage) {
+            openCurrentLocationPageFromWidget(targetLocation, context)
+            return
+        }
+
+        if (_uiState.value.isFollowMode) {
+            setFollowMode(false, context)
+        }
+
+        onLocationSelected(targetLocation, isManualSearch = true)
+    }
+
+    fun openCurrentLocationPageFromWidget(context: Context) {
+        val fallbackLocation = _uiState.value.lastLiveLocation
+            ?: _uiState.value.selectedLocation
+            ?: lastLocation
+            ?: defaultLocation
+
+        openCurrentLocationPageFromWidget(fallbackLocation, context)
+    }
+
+    private fun openCurrentLocationPageFromWidget(targetLocation: LocationItem, context: Context) {
+        _uiState.update { state ->
+            state.copy(lastLiveLocation = targetLocation)
+        }
+        saveLiveLocation(targetLocation)
+        onLocationSelected(targetLocation, isManualSearch = false)
+        setFollowMode(true, context)
+    }
+
+    private fun resolveWidgetTargetLocation(lat: Double, lon: Double): LocationItem {
         val targetKey = "$lat,$lon"
         val stateSnapshot = _uiState.value
 
@@ -1322,17 +1359,11 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             lastLocation?.let(::add)
         }.firstOrNull { locationKey(it) == targetKey }
 
-        val targetLocation = locationFromState ?: LocationItem(
+        return locationFromState ?: LocationItem(
             name = "Widget location",
             lat = lat,
             lon = lon
         )
-
-        if (stateSnapshot.isFollowMode) {
-            setFollowMode(false, context)
-        }
-
-        onLocationSelected(targetLocation, isManualSearch = true)
     }
 
     fun onLocationSelected(location: LocationItem, isManualSearch: Boolean = true) {

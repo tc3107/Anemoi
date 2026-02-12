@@ -155,6 +155,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(
+                    MainActivity.EXTRA_WIDGET_LOCATION_IS_CURRENT,
+                    snapshot.launchAsCurrentLocationPage
+                )
 
                 snapshot.launchLat?.let { lat ->
                     putExtra(MainActivity.EXTRA_WIDGET_LOCATION_LAT, lat)
@@ -325,6 +329,7 @@ private data class WeatherWidgetSnapshot(
     val highText: String,
     val lowText: String,
     val hourlySlots: List<WidgetHourlySlot>,
+    val launchAsCurrentLocationPage: Boolean,
     val launchLat: Double?,
     val launchLon: Double?
 )
@@ -405,6 +410,7 @@ private class WeatherWidgetSnapshotReader(private val context: Context) {
             highText = highText,
             lowText = lowText,
             hourlySlots = hourlySlots,
+            launchAsCurrentLocationPage = selection == WidgetLocationSelection.CurrentLocation,
             launchLat = selectedLocation?.lat,
             launchLon = selectedLocation?.lon
         )
@@ -425,6 +431,7 @@ private class WeatherWidgetSnapshotReader(private val context: Context) {
                 WidgetHourlySlot("--:--", "--°", null),
                 WidgetHourlySlot("--:--", "--°", null)
             ),
+            launchAsCurrentLocationPage = false,
             launchLat = null,
             launchLon = null
         )
