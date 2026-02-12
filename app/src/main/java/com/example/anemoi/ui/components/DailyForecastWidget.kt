@@ -92,6 +92,12 @@ fun DailyForecastWidget(
     val precipitationLaneWidth = 44.dp
     val iconLaneWidth = 30.dp
     val surfaceShape = RoundedCornerShape(28.dp)
+    val minTempColor = Color.White.copy(alpha = 0.68f)
+    val rainPercentColor = lerp(
+        start = Color.White,
+        stop = Color(0xFF6EC9F7),
+        fraction = 0.16f
+    ).copy(alpha = minTempColor.alpha)
 
     val globalMin = rows.mapNotNull { it.minTemp }.minOrNull()
     val globalMax = rows.mapNotNull { it.maxTemp }.maxOrNull()
@@ -184,7 +190,7 @@ fun DailyForecastWidget(
                         if (precipitationPercent != null) {
                             Text(
                                 text = "$precipitationPercent%",
-                                color = precipitationColor(precipitationPercent),
+                                color = rainPercentColor,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.End
@@ -218,7 +224,7 @@ fun DailyForecastWidget(
 
                     Text(
                         text = minTempText,
-                        color = Color.White.copy(alpha = 0.68f),
+                        color = minTempColor,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
@@ -270,6 +276,14 @@ private fun TemperatureRangeTrack(
     globalMax: Double,
     modifier: Modifier = Modifier
 ) {
+    val range = (globalMax - globalMin).takeIf { it > 0.0 } ?: 1.0
+    val dayLow = min(dayMin ?: globalMin, dayMax ?: globalMax)
+    val dayHigh = max(dayMin ?: globalMin, dayMax ?: globalMax)
+    val targetStartFraction = ((dayLow - globalMin) / range).coerceIn(0.0, 1.0).toFloat()
+    val targetEndFraction = ((dayHigh - globalMin) / range).coerceIn(0.0, 1.0).toFloat()
+    val startFraction = targetStartFraction
+    val endFraction = targetEndFraction
+
     Canvas(modifier = modifier.fillMaxWidth()) {
         val centerY = size.height / 2f
         val strokeWidth = max(2f, size.height * 0.65f)
@@ -300,12 +314,8 @@ private fun TemperatureRangeTrack(
 
         if (dayMin == null || dayMax == null) return@Canvas
 
-        val range = (globalMax - globalMin).takeIf { it > 0.0 } ?: 1.0
-        val dayLow = min(dayMin, dayMax)
-        val dayHigh = max(dayMin, dayMax)
-
-        val startX = (((dayLow - globalMin) / range).coerceIn(0.0, 1.0) * size.width).toFloat()
-        val rawEndX = (((dayHigh - globalMin) / range).coerceIn(0.0, 1.0) * size.width).toFloat()
+        val startX = startFraction * size.width
+        val rawEndX = endFraction * size.width
         val endX = max(rawEndX, (startX + strokeWidth).coerceAtMost(size.width))
 
         drawLine(
@@ -316,15 +326,6 @@ private fun TemperatureRangeTrack(
             cap = StrokeCap.Round
         )
     }
-}
-
-private fun precipitationColor(percent: Int): Color {
-    val fraction = (percent / 100f).coerceIn(0f, 1f)
-    return lerp(
-        start = Color(0xFF6EC9F7),
-        stop = Color(0xFF0288D1),
-        fraction = fraction
-    )
 }
 
 private fun shortWeekdayLabel(dateIso: String?, dayOffset: Int): String {

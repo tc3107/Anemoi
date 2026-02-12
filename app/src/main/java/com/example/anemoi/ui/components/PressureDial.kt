@@ -47,6 +47,13 @@ fun PressureDial(
         trend < -1.0 -> Color.White
         else -> Color.White.copy(alpha = 0.4f)
     }
+    val targetProgress = if (currentPressure != null && minPressure != null && maxPressure != null) {
+        val range = maxPressure - minPressure
+        if (range > 0) ((currentPressure - minPressure) / range).coerceIn(0.0, 1.0).toFloat() else 0.5f
+    } else {
+        null
+    }
+    val dialProgress = targetProgress ?: 0.5f
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -67,12 +74,7 @@ fun PressureDial(
             val maxProtrusion = max(tickLength, indicatorLength) / 2f
             val radius = (size.minDimension / 2f) - maxProtrusion - 2.dp.toPx()
             
-            val progress = if (currentPressure != null && minPressure != null && maxPressure != null) {
-                val range = maxPressure - minPressure
-                if (range > 0) ((currentPressure - minPressure) / range).coerceIn(0.0, 1.0).toFloat() else 0.5f
-            } else null
-            
-            val currentAngle = if (progress != null) startAngle + progress * totalSweep else null
+            val currentAngle = if (targetProgress != null) startAngle + dialProgress * totalSweep else null
 
             val tickColor = Color(0xFFC9CED5).copy(alpha = 0.24f)
 

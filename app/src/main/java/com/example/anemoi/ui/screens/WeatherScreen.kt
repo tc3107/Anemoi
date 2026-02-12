@@ -391,120 +391,113 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = true
-                ) { page ->
-                    val pageLocation = if (page == 0) {
-                        if (uiState.isFollowMode) uiState.selectedLocation else null
-                    } else if (page <= favorites.size) {
-                        favorites.getOrNull(page - 1)
-                    } else {
-                        searchedLocation
-                    }
-
-                    WeatherDetailsSheet(
-                        uiState = uiState,
-                        handleHeight = 0.dp,
-                        onHandleClick = {},
-                        isExpanded = true,
-                        showHandle = false,
-                        resetScrollKey = pagerState.settledPage,
-                        headerContent = {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = statusBarInsetTop + 2.dp)
-                            ) {
-                                SearchBar(
-                                    query = uiState.searchQuery,
-                                    onQueryChange = viewModel::onSearchQueryChanged,
-                                    suggestions = uiState.suggestions,
-                                    favorites = favorites,
-                                    onLocationSelected = viewModel::onLocationSelected,
-                                    onSettingsClick = { viewModel.toggleSettings(true) },
-                                    onMenuClick = { viewModel.toggleOrganizerMode(true) },
-                                    onToggleFavorite = viewModel::toggleFavorite,
-                                    selectedLocation = searchBarLocation,
-                                    isLocating = uiState.isLocating,
-                                    isFollowMode = uiState.isFollowMode,
-                                    hasErrors = uiState.errors.isNotEmpty(),
-                                    hasWarnings = hasWeatherWarnings,
-                                    tintAlpha = currentTintAlpha,
-                                    blurStrength = currentBlurStrength,
-                                    onLocateClick = {
-                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                                            viewModel.getCurrentLocation(context)
-                                        } else {
-                                            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                        }
-                                    },
-                                    onLocateLongClick = {
-                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                                            viewModel.setFollowMode(!uiState.isFollowMode, context)
-                                        } else {
-                                            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                        }
+                WeatherDetailsSheet(
+                    uiState = uiState,
+                    handleHeight = 0.dp,
+                    onHandleClick = {},
+                    isExpanded = true,
+                    showHandle = false,
+                    headerContent = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = statusBarInsetTop + 2.dp)
+                        ) {
+                            SearchBar(
+                                query = uiState.searchQuery,
+                                onQueryChange = viewModel::onSearchQueryChanged,
+                                suggestions = uiState.suggestions,
+                                favorites = favorites,
+                                onLocationSelected = viewModel::onLocationSelected,
+                                onSettingsClick = { viewModel.toggleSettings(true) },
+                                onMenuClick = { viewModel.toggleOrganizerMode(true) },
+                                onToggleFavorite = viewModel::toggleFavorite,
+                                selectedLocation = searchBarLocation,
+                                isLocating = uiState.isLocating,
+                                isFollowMode = uiState.isFollowMode,
+                                hasErrors = uiState.errors.isNotEmpty(),
+                                hasWarnings = hasWeatherWarnings,
+                                tintAlpha = currentTintAlpha,
+                                blurStrength = currentBlurStrength,
+                                onLocateClick = {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                        viewModel.getCurrentLocation(context)
+                                    } else {
+                                        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                                     }
-                                )
-                            }
+                                },
+                                onLocateLongClick = {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                        viewModel.setFollowMode(!uiState.isFollowMode, context)
+                                    } else {
+                                        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                    }
+                                }
+                            )
                             Spacer(modifier = Modifier.height(20.dp))
 
-                            if (pageLocation != null) {
-                                val key = "${pageLocation.lat},${pageLocation.lon}"
-                                val now = System.currentTimeMillis()
-                                val staleServeWindowMs = 12 * 60 * 60 * 1000L
-                                val grayThresholdMs = 60 * 60 * 1000L
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxWidth(),
+                                userScrollEnabled = true
+                            ) { page ->
+                                val pageLocation = locationForPage(page)
 
-                                val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
-                                val rawWeather = uiState.weatherMap[key]
-                                val currentUpdatedAt = uiState.currentUpdateTimeMap[key] ?: 0L
-                                val hourlyUpdatedAt = uiState.hourlyUpdateTimeMap[key] ?: 0L
-                                val dailyUpdatedAt = uiState.dailyUpdateTimeMap[key] ?: 0L
+                                if (pageLocation != null) {
+                                    val key = "${pageLocation.lat},${pageLocation.lon}"
+                                    val now = System.currentTimeMillis()
+                                    val staleServeWindowMs = 12 * 60 * 60 * 1000L
+                                    val grayThresholdMs = 60 * 60 * 1000L
 
-                                val currentUsable = rawWeather?.currentWeather != null &&
-                                    currentUpdatedAt > 0L &&
-                                    now - currentUpdatedAt <= staleServeWindowMs
-                                val hourlyUsable = rawWeather?.hourly != null &&
-                                    hourlyUpdatedAt > 0L &&
-                                    now - hourlyUpdatedAt <= staleServeWindowMs
-                                val dailyUsable = rawWeather?.daily != null &&
-                                    dailyUpdatedAt > 0L &&
-                                    now - dailyUpdatedAt <= staleServeWindowMs
+                                    val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
+                                    val rawWeather = uiState.weatherMap[key]
+                                    val currentUpdatedAt = uiState.currentUpdateTimeMap[key] ?: 0L
+                                    val hourlyUpdatedAt = uiState.hourlyUpdateTimeMap[key] ?: 0L
+                                    val dailyUpdatedAt = uiState.dailyUpdateTimeMap[key] ?: 0L
 
-                                val weather = rawWeather?.copy(
-                                    currentWeather = if (currentUsable) rawWeather.currentWeather else null,
-                                    hourly = if (hourlyUsable) rawWeather.hourly else null,
-                                    daily = if (dailyUsable) rawWeather.daily else null
-                                )
+                                    val currentUsable = rawWeather?.currentWeather != null &&
+                                        currentUpdatedAt > 0L &&
+                                        now - currentUpdatedAt <= staleServeWindowMs
+                                    val hourlyUsable = rawWeather?.hourly != null &&
+                                        hourlyUpdatedAt > 0L &&
+                                        now - hourlyUpdatedAt <= staleServeWindowMs
+                                    val dailyUsable = rawWeather?.daily != null &&
+                                        dailyUpdatedAt > 0L &&
+                                        now - dailyUpdatedAt <= staleServeWindowMs
 
-                                val useStaleColor = !isSignatureMatch || listOfNotNull(
-                                    if (currentUsable) now - currentUpdatedAt else null,
-                                    if (hourlyUsable) now - hourlyUpdatedAt else null,
-                                    if (dailyUsable) now - dailyUpdatedAt else null
-                                ).any { it > grayThresholdMs }
+                                    val weather = rawWeather?.copy(
+                                        currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+                                        hourly = if (hourlyUsable) rawWeather.hourly else null,
+                                        daily = if (dailyUsable) rawWeather.daily else null
+                                    )
 
-                                WeatherDisplay(
-                                    weather = weather,
-                                    tempUnit = uiState.tempUnit,
-                                    showDashesOverride = (page == 0 && !uiState.locationFound) || page != pagerState.currentPage,
-                                    textAlpha = textAlpha,
-                                    useStaleColor = useStaleColor
-                                )
-                            } else {
-                                WeatherDisplay(
-                                    weather = null,
-                                    tempUnit = uiState.tempUnit,
-                                    showDashesOverride = true,
-                                    textAlpha = textAlpha
-                                )
+                                    val useStaleColor = !isSignatureMatch || listOfNotNull(
+                                        if (currentUsable) now - currentUpdatedAt else null,
+                                        if (hourlyUsable) now - hourlyUpdatedAt else null,
+                                        if (dailyUsable) now - dailyUpdatedAt else null
+                                    ).any { it > grayThresholdMs }
+
+                                    WeatherDisplay(
+                                        weather = weather,
+                                        tempUnit = uiState.tempUnit,
+                                        showDashesOverride = page == 0 && !uiState.locationFound,
+                                        textAlpha = textAlpha,
+                                        useStaleColor = useStaleColor
+                                    )
+                                } else {
+                                    WeatherDisplay(
+                                        weather = null,
+                                        tempUnit = uiState.tempUnit,
+                                        showDashesOverride = true,
+                                        textAlpha = textAlpha
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.height(72.dp))
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 Column(
                     modifier = Modifier

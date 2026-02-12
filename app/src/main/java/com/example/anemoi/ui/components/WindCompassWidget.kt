@@ -62,6 +62,7 @@ fun WindCompassWidget(
     modifier: Modifier = Modifier
 ) {
     val windSpeedText = formatSpeedWithUnit(windSpeedKmh, unit)
+    val animatedWeatherHeadingDegrees = rememberAnimatedBearingDegrees(windDirectionDegrees)
     val headingText = windDirectionDegrees?.let { formatBearing(it) } ?: "--"
     val gustSpeedText = formatSpeedWithUnit(gustSpeedKmh, unit)
     val maxGustText = formatSpeedWithUnit(maxGustKmh, unit)
@@ -191,8 +192,8 @@ fun WindCompassWidget(
             }
 
             CompassDial(
-                headingDegrees = windDirectionDegrees,
-                showArrow = windDirectionDegrees != null,
+                headingDegrees = animatedWeatherHeadingDegrees?.toDouble(),
+                showArrow = animatedWeatherHeadingDegrees != null,
                 dialRotationDegrees = compassDialRotationDegrees,
                 modifier = Modifier
                     .size(dialSize)
@@ -250,6 +251,11 @@ fun WindCompassWidget(
             )
         }
     }
+}
+
+@Composable
+private fun rememberAnimatedBearingDegrees(targetBearingDegrees: Double?): Float? {
+    return targetBearingDegrees?.toFloat()?.let(::normalizeDegrees)
 }
 
 @Composable
