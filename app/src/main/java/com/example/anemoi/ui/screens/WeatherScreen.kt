@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -220,20 +221,36 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 }
             )
     ) {
-        settledPageLocation?.let { location ->
-            MapBackground(
-                lat = location.lat,
-                lon = location.lon,
-                zoom = if (uiState.customValuesEnabled) uiState.mapZoom else 16f,
-                blurStrength = if (uiState.customValuesEnabled) uiState.blurStrength else 6f,
-                tintAlpha = if (uiState.customValuesEnabled) uiState.tintAlpha else 0.1f,
-                obfuscationMode = uiState.obfuscationMode,
-                gridKm = uiState.gridKm.toDouble(),
-                lastResponseCoords = uiState.lastResponseCoords,
-                responseAnimTrigger = uiState.responseAnimTrigger,
-                shouldAnimate = !uiState.isLoading,
-                freezeCameraUpdates = isPagerSwitchInProgress,
-                interactionEnabled = !uiState.isOrganizerMode && !uiState.isSettingsOpen
+        if (uiState.mapEnabled) {
+            settledPageLocation?.let { location ->
+                MapBackground(
+                    lat = location.lat,
+                    lon = location.lon,
+                    zoom = if (uiState.customValuesEnabled) uiState.mapZoom else 16f,
+                    blurStrength = if (uiState.customValuesEnabled) uiState.blurStrength else 6f,
+                    tintAlpha = if (uiState.customValuesEnabled) uiState.tintAlpha else 0.1f,
+                    obfuscationMode = uiState.obfuscationMode,
+                    gridKm = uiState.gridKm.toDouble(),
+                    lastResponseCoords = uiState.lastResponseCoords,
+                    responseAnimTrigger = uiState.responseAnimTrigger,
+                    shouldAnimate = !uiState.isLoading,
+                    freezeCameraUpdates = isPagerSwitchInProgress,
+                    interactionEnabled = !uiState.isOrganizerMode && !uiState.isSettingsOpen
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF0F2027),
+                                Color(0xFF203A43),
+                                Color(0xFF2C5364)
+                            )
+                        )
+                    )
             )
         }
 

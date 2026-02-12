@@ -38,6 +38,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,6 +98,7 @@ data class WeatherUiState(
     val tempUnit: TempUnit = TempUnit.CELSIUS,
     val pressureUnit: PressureUnit = PressureUnit.HPA,
     val customValuesEnabled: Boolean = false,
+    val mapEnabled: Boolean = true,
     val mapZoom: Float = 16f,
     val blurStrength: Float = 6f,
     val tintAlpha: Float = 0.1f,
@@ -214,6 +216,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private var followModeJob: Job? = null
     private var startupPrefetchJob: Job? = null
     private var persistCachesJob: Job? = null
+    private var mapPreCacheJob: Job? = null
     private val inFlightWeatherRequests = mutableMapOf<String, Deferred<Boolean>>()
 
     private var lastLocation: LocationItem? = null
@@ -233,6 +236,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val tempUnitKey = stringPreferencesKey("temp_unit")
     private val pressureUnitKey = stringPreferencesKey("pressure_unit")
     private val customValuesKey = booleanPreferencesKey("custom_values_enabled")
+    private val mapEnabledKey = booleanPreferencesKey("map_enabled")
     private val mapZoomKey = floatPreferencesKey("map_zoom")
     private val blurStrengthKey = floatPreferencesKey("blur_strength")
     private val tintAlphaKey = floatPreferencesKey("tint_alpha")
@@ -358,6 +362,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
                     pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
                     customValuesEnabled = prefs[customValuesKey] ?: false,
+                    mapEnabled = prefs[mapEnabledKey] ?: true,
                     mapZoom = prefs[mapZoomKey] ?: 16f,
                     blurStrength = prefs[blurStrengthKey] ?: 6f,
                     tintAlpha = prefs[tintAlphaKey] ?: 0.1f,
@@ -494,8 +499,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     private fun preCacheLocations(locations: List<LocationItem>) {
-        if (locations.isEmpty()) return
-        viewModelScope.launch {
+        mapPreCacheJob?.cancel()
+        if (!_uiState.value.mapEnabled || locations.isEmpty()) return
+
+        mapPreCacheJob = viewModelScope.launch {
             try {
                 val cacheManager = withContext(Dispatchers.Main) {
                     val mapView = MapView(applicationContext)
@@ -509,6 +516,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                         cacheManager.downloadAreaAsync(applicationContext, bb, 13, 17)
                     }
                 }
+            } catch (_: CancellationException) {
+                // Expected when map pre-cache work is canceled.
             } catch (e: Exception) {
                 addLog("Pre-cache error: ${e.message}")
             }
@@ -863,6 +872,29 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         _uiState.update { it.copy(mapZoom = zoom) }
         viewModelScope.launch {
             applicationContext.dataStore.edit { it[mapZoomKey] = zoom }
+        }
+    }
+
+    fun setMapEnabled(enabled: Boolean) {
+        if (_uiState.value.mapEnabled == enabled) return
+
+        _uiState.update { it.copy(mapEnabled = enabled) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[mapEnabledKey] = enabled }
+        }
+
+        if (enabled) {
+            val state = _uiState.value
+            preCacheLocations(
+                state.favorites + listOfNotNull(
+                    state.searchedLocation,
+                    state.lastLiveLocation,
+                    state.selectedLocation,
+                    lastLocation
+                )
+            )
+        } else {
+            mapPreCacheJob?.cancel()
         }
     }
 
