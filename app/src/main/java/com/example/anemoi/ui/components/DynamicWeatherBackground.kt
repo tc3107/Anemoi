@@ -21,7 +21,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 @Composable
@@ -159,15 +161,30 @@ private fun WeatherParticleLayer(mode: ParticleMode) {
         particles.forEach { particle ->
             when (mode) {
                 ParticleMode.RAIN -> {
+                    val phase = ((cycle + particle.phase) * 2f * PI).toFloat()
                     val y = ((particle.seedY + cycle * particle.speed) % 1f) * height
-                    val sway = sin(((cycle + particle.phase) * 2f * PI).toFloat()) * particle.drift
+                    val sway = sin(phase) * particle.drift
                     val x = ((particle.seedX + sway).coerceIn(0f, 1f)) * width
-                    val length = (0.03f + particle.size * 0.06f) * height
+
+                    // Horizontal speed comes from the time derivative of the sway function.
+                    val horizontalSpeedNorm = cos(phase) * (2f * PI.toFloat()) * particle.drift
+                    val verticalSpeedNorm = particle.speed
+                    val horizontalSpeedPx = horizontalSpeedNorm * width
+                    val verticalSpeedPx = verticalSpeedNorm * height
+                    val absoluteSpeedPx = sqrt(
+                        horizontalSpeedPx * horizontalSpeedPx +
+                            verticalSpeedPx * verticalSpeedPx
+                    )
+
+                    val referenceSpeedPx = height * 2.2f
+                    val speedFactor = (absoluteSpeedPx / referenceSpeedPx).coerceIn(0.12f, 1f)
+                    val length = (0.02f + speedFactor * 0.08f) * height
+                    val slope = horizontalSpeedPx / verticalSpeedPx.coerceAtLeast(1f)
                     val alpha = (0.08f + particle.alpha * 0.28f).coerceIn(0f, 1f)
                     drawLine(
                         color = Color.White.copy(alpha = alpha),
                         start = Offset(x, y),
-                        end = Offset(x - length * 0.28f, y + length),
+                        end = Offset(x + slope * length, y + length),
                         strokeWidth = (1.2f + particle.size * 1.6f),
                         cap = StrokeCap.Round
                     )

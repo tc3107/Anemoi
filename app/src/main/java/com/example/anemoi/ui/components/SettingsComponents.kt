@@ -181,7 +181,7 @@ fun SegmentedSelector(
                     .width(with(density) { itemWidthPx.toDp() })
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
+                    .background(Color.White.copy(alpha = 0.2f))
             )
         }
 
@@ -199,7 +199,7 @@ fun SegmentedSelector(
                 ) {
                     Text(
                         text = label,
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.72f),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -207,7 +207,7 @@ fun SegmentedSelector(
             }
         }
 
-        // Text Labels Layer 2 (Black text - clipped to indicator for inversion)
+        // Text Labels Layer 2 (bright white text clipped to selected segment)
         // Fixed: Using float-based graphicsLayer translation instead of IntOffset to prevent sub-pixel shaking
         if (itemWidthPx > 0) {
             Box(
@@ -241,7 +241,7 @@ fun SegmentedSelector(
                             ) {
                                 Text(
                                     text = label,
-                                    color = Color.Black,
+                                    color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )

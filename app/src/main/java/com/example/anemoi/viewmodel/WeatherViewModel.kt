@@ -14,6 +14,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -29,6 +30,7 @@ import com.example.anemoi.data.PressureUnit
 import com.example.anemoi.data.TempUnit
 import com.example.anemoi.data.WeatherResponse
 import com.example.anemoi.util.ObfuscationMode
+import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.obfuscateLocation
 import com.example.anemoi.widget.WidgetLocationStore
@@ -94,6 +96,10 @@ data class WeatherUiState(
     val isFollowMode: Boolean = false,
     val isSettingsOpen: Boolean = false,
     val isOrganizerMode: Boolean = false,
+    val isDebugOptionsVisible: Boolean = false,
+    val isPerformanceOverlayEnabled: Boolean = false,
+    val isBackgroundOverrideEnabled: Boolean = false,
+    val backgroundOverridePresetIndex: Int = 0,
     val errors: List<String> = emptyList(),
     val tempUnit: TempUnit = TempUnit.CELSIUS,
     val pressureUnit: PressureUnit = PressureUnit.HPA,
@@ -248,6 +254,11 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val obfuscationModeKey = stringPreferencesKey("obfuscation_mode")
     private val gridKmKey = floatPreferencesKey("grid_km")
     private val persistedCacheKey = stringPreferencesKey("persisted_cache_v2")
+    private val debugOptionsVisibleKey = booleanPreferencesKey("debug_options_visible")
+    private val performanceOverlayEnabledKey = booleanPreferencesKey("performance_overlay_enabled")
+    private val aPerformanceOverlayEnabledLegacyKey = booleanPreferencesKey("aperformance_overlay_enabled")
+    private val backgroundOverrideEnabledKey = booleanPreferencesKey("background_override_enabled")
+    private val backgroundOverridePresetIndexKey = intPreferencesKey("background_override_preset_index")
 
     private val whitespaceRegex = Regex("\\s+")
 
@@ -359,6 +370,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     searchedLocation = searched,
                     lastLiveLocation = live,
                     isFollowMode = prefs[followModeKey] ?: false,
+                    isDebugOptionsVisible = prefs[debugOptionsVisibleKey] ?: false,
+                    isPerformanceOverlayEnabled = prefs[performanceOverlayEnabledKey]
+                        ?: prefs[aPerformanceOverlayEnabledLegacyKey]
+                        ?: false,
+                    isBackgroundOverrideEnabled = prefs[backgroundOverrideEnabledKey] ?: false,
+                    backgroundOverridePresetIndex = (prefs[backgroundOverridePresetIndexKey] ?: 0)
+                        .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
                     tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
                     pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
                     customValuesEnabled = prefs[customValuesKey] ?: false,
@@ -1002,6 +1020,39 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun toggleOrganizerMode(open: Boolean) {
         _uiState.update { it.copy(isOrganizerMode = open) }
+    }
+
+    fun setDebugOptionsVisible(visible: Boolean) {
+        _uiState.update { it.copy(isDebugOptionsVisible = visible) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[debugOptionsVisibleKey] = visible }
+        }
+    }
+
+    fun setPerformanceOverlayEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isPerformanceOverlayEnabled = enabled) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit {
+                it[performanceOverlayEnabledKey] = enabled
+                it.remove(aPerformanceOverlayEnabledLegacyKey)
+            }
+        }
+    }
+
+    fun setBackgroundOverrideEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isBackgroundOverrideEnabled = enabled) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[backgroundOverrideEnabledKey] = enabled }
+        }
+    }
+
+    fun setBackgroundOverridePresetIndex(index: Int) {
+        val maxIndex = backgroundOverridePresets.lastIndex.coerceAtLeast(0)
+        val clamped = index.coerceIn(0, maxIndex)
+        _uiState.update { it.copy(backgroundOverridePresetIndex = clamped) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[backgroundOverridePresetIndexKey] = clamped }
+        }
     }
 
     fun updateFavorites(newFavorites: List<LocationItem>) {

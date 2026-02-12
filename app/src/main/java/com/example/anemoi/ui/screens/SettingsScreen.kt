@@ -1,6 +1,8 @@
 package com.example.anemoi.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +28,7 @@ import com.example.anemoi.data.TempUnit
 import com.example.anemoi.ui.components.GlassEntryCard
 import com.example.anemoi.ui.components.SegmentedSelector
 import com.example.anemoi.util.ObfuscationMode
+import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.viewmodel.WeatherViewModel
 import kotlin.math.roundToInt
 
@@ -36,10 +39,24 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
     var draftGridKm by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.gridKm) }
+    val backgroundPresetMaxIndex = backgroundOverridePresets.lastIndex.coerceAtLeast(0)
+    val selectedBackgroundPreset = if (backgroundOverridePresets.isNotEmpty()) {
+        backgroundOverridePresets[uiState.backgroundOverridePresetIndex.coerceIn(0, backgroundPresetMaxIndex)]
+    } else {
+        null
+    }
     val settingsScrollState = rememberScrollState()
     var didAutoScrollToWarnings by remember(uiState.isSettingsOpen) { mutableStateOf(false) }
 
     val surfaceShape = RoundedCornerShape(32.dp)
+    val settingsSwitchColors = SwitchDefaults.colors(
+        checkedThumbColor = Color.White,
+        checkedTrackColor = Color.Transparent,
+        checkedBorderColor = Color.White,
+        uncheckedThumbColor = Color(0xFFB3B3B3),
+        uncheckedTrackColor = Color.Transparent,
+        uncheckedBorderColor = Color(0xFF8C8C8C)
+    )
     val staleServeWindowMs = 12 * 60 * 60 * 1000L
     val currentThresholdMs = 5 * 60 * 1000L
     val hourlyThresholdMs = 20 * 60 * 1000L
@@ -250,7 +267,8 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                             Spacer(modifier = Modifier.width(12.dp))
                             Switch(
                                 checked = uiState.mapEnabled,
-                                onCheckedChange = viewModel::setMapEnabled
+                                onCheckedChange = viewModel::setMapEnabled,
+                                colors = settingsSwitchColors
                             )
                         }
                     }
@@ -319,7 +337,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 }
                                 Text(
                                     label, 
-                                    color = Color.White.copy(alpha = 0.7f), 
+                                    color = Color.White,
                                     fontSize = 12.sp,
                                     modifier = Modifier.align(Alignment.CenterHorizontally)
                                 )
@@ -381,6 +399,141 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.setDebugOptionsVisible(!uiState.isDebugOptionsVisible)
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = Color.White
+                            ),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.45f),
+                                        Color.White.copy(alpha = 0.20f)
+                                    )
+                                )
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (uiState.isDebugOptionsVisible) "Hide Debug" else "Debug",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(visible = uiState.isDebugOptionsVisible) {
+                        GlassEntryCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Debug Options",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Performance Overlay",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Shows live UI/runtime stats in the top-left overlay.",
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Switch(
+                                        checked = uiState.isPerformanceOverlayEnabled,
+                                        onCheckedChange = viewModel::setPerformanceOverlayEnabled,
+                                        colors = settingsSwitchColors
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Override Background",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Forces a chosen gradient scene for visual testing.",
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Switch(
+                                        checked = uiState.isBackgroundOverrideEnabled,
+                                        onCheckedChange = viewModel::setBackgroundOverrideEnabled,
+                                        colors = settingsSwitchColors
+                                    )
+                                }
+
+                                if (uiState.isBackgroundOverrideEnabled && selectedBackgroundPreset != null) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Background Preset",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = selectedBackgroundPreset.label,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Slider(
+                                        value = uiState.backgroundOverridePresetIndex.toFloat(),
+                                        onValueChange = {
+                                            viewModel.setBackgroundOverridePresetIndex(it.roundToInt())
+                                        },
+                                        valueRange = 0f..backgroundPresetMaxIndex.toFloat(),
+                                        steps = (backgroundPresetMaxIndex - 1).coerceAtLeast(0),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color.White,
+                                            activeTrackColor = Color.White,
+                                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }

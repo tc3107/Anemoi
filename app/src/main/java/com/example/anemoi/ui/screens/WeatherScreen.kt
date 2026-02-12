@@ -22,10 +22,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.anemoi.data.LocationItem
@@ -34,8 +40,11 @@ import com.example.anemoi.ui.components.MapBackground
 import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
 import com.example.anemoi.ui.components.WeatherDisplay
+import com.example.anemoi.util.backgroundOverridePresetAt
+import com.example.anemoi.util.backgroundOverrideTimeIso
 import com.example.anemoi.viewmodel.WeatherViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
+import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +78,11 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val latestFavorites by rememberUpdatedState(favorites)
     val latestSearchedLocation by rememberUpdatedState(searchedLocation)
     val latestIsFollowMode by rememberUpdatedState(uiState.isFollowMode)
+    var overlayFps by remember { mutableStateOf(0) }
+    var overlayAvgFrameMs by remember { mutableStateOf(0f) }
+    var overlayUsedMemMb by remember { mutableStateOf(0) }
+    var overlayFreeMemMb by remember { mutableStateOf(0) }
+    var overlayMaxMemMb by remember { mutableStateOf(0) }
 
     var isReady by remember { mutableStateOf(false) }
 
@@ -132,6 +146,58 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     LaunchedEffect(targetPage) {
         if (isReady && pagerState.currentPage != targetPage) {
             pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
+    LaunchedEffect(uiState.isPerformanceOverlayEnabled) {
+        if (!uiState.isPerformanceOverlayEnabled) {
+            overlayFps = 0
+            overlayAvgFrameMs = 0f
+            return@LaunchedEffect
+        }
+
+        val runtime = Runtime.getRuntime()
+        val initialFreeBytes = runtime.freeMemory()
+        val initialUsedBytes = runtime.totalMemory() - initialFreeBytes
+        overlayUsedMemMb = (initialUsedBytes / (1024L * 1024L)).toInt()
+        overlayFreeMemMb = (initialFreeBytes / (1024L * 1024L)).toInt()
+        overlayMaxMemMb = (runtime.maxMemory() / (1024L * 1024L)).toInt()
+        var windowStartNs = 0L
+        var previousFrameNs = 0L
+        var frameCount = 0
+        var frameDurationsNs = 0L
+
+        while (true) {
+            withFrameNanos { nowNs ->
+                if (windowStartNs == 0L) {
+                    windowStartNs = nowNs
+                }
+                if (previousFrameNs != 0L) {
+                    frameDurationsNs += nowNs - previousFrameNs
+                }
+                previousFrameNs = nowNs
+                frameCount++
+
+                val elapsedNs = nowNs - windowStartNs
+                if (elapsedNs >= 1_000_000_000L) {
+                    overlayFps = ((frameCount * 1_000_000_000L) / elapsedNs).toInt()
+                    overlayAvgFrameMs = if (frameCount > 1) {
+                        (frameDurationsNs.toDouble() / (frameCount - 1).toDouble() / 1_000_000.0).toFloat()
+                    } else {
+                        0f
+                    }
+
+                    val freeBytes = runtime.freeMemory()
+                    val usedBytes = runtime.totalMemory() - freeBytes
+                    overlayUsedMemMb = (usedBytes / (1024L * 1024L)).toInt()
+                    overlayFreeMemMb = (freeBytes / (1024L * 1024L)).toInt()
+                    overlayMaxMemMb = (runtime.maxMemory() / (1024L * 1024L)).toInt()
+
+                    frameCount = 0
+                    frameDurationsNs = 0L
+                    windowStartNs = nowNs
+                }
+            }
         }
     }
 
@@ -199,6 +265,57 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         else ->
             uiState.selectedLocation
     }
+    val overrideBackgroundPreset = backgroundOverridePresetAt(uiState.backgroundOverridePresetIndex)
+    val overrideBackgroundTimeIso = backgroundOverrideTimeIso(overrideBackgroundPreset.hourOfDay)
+    val overlayNow = System.currentTimeMillis()
+    val overlayKey = selectedLocationKey
+    val overlayCurrentUpdatedAt = overlayKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+    val overlayHourlyUpdatedAt = overlayKey?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
+    val overlayDailyUpdatedAt = overlayKey?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
+    val overlaySignatureMatch = overlayKey != null &&
+        uiState.cacheSignatureMap[overlayKey] == uiState.activeRequestSignature
+    val overlayWeather = overlayKey?.let { uiState.weatherMap[it] }
+    val overlayLocationLine = uiState.selectedLocation?.let { location ->
+        "${location.name} (${String.format(Locale.US, "%.4f", location.lat)}, ${String.format(Locale.US, "%.4f", location.lon)})"
+    } ?: "none"
+    val overlayLines = buildList {
+        add("PERFORMANCE")
+        add("fps=$overlayFps frame=${formatFrameMs(overlayAvgFrameMs)}ms")
+        add("mem used=$overlayUsedMemMb MB free=$overlayFreeMemMb MB max=$overlayMaxMemMb MB")
+        add("page=${pagerState.currentPage + 1}/$totalPages settled=${pagerState.settledPage + 1}")
+        add("loading=${uiState.isLoading} locating=${uiState.isLocating} follow=${uiState.isFollowMode}")
+        add("map=${uiState.mapEnabled} settings=${uiState.isSettingsOpen} organizer=${uiState.isOrganizerMode}")
+        add(
+            "bgOverride=${uiState.isBackgroundOverrideEnabled} preset=${
+                if (uiState.isBackgroundOverrideEnabled) overrideBackgroundPreset.label else "-"
+            }"
+        )
+        add("favorites=${favorites.size} suggestions=${uiState.suggestions.size} cache=${uiState.weatherMap.size}")
+        add("location=$overlayLocationLine")
+        add(
+            "signature=${
+                when {
+                    overlayKey == null -> "n/a"
+                    overlaySignatureMatch -> "match"
+                    else -> "mismatch"
+                }
+            }"
+        )
+        add(
+            "age current=${formatOverlayAge(overlayNow, overlayCurrentUpdatedAt)} " +
+                "hourly=${formatOverlayAge(overlayNow, overlayHourlyUpdatedAt)} " +
+                "daily=${formatOverlayAge(overlayNow, overlayDailyUpdatedAt)}"
+        )
+        if (overlayWeather != null) {
+            add(
+                "datasets current=${overlayWeather.currentWeather != null} " +
+                    "hourly=${overlayWeather.hourly != null} daily=${overlayWeather.daily != null}"
+            )
+        }
+        if (uiState.errors.isNotEmpty()) {
+            add("errors=${uiState.errors.size} first=${uiState.errors.first()}")
+        }
+    }
 
     BackHandler(enabled = uiState.isOrganizerMode || uiState.isSettingsOpen) {
         if (uiState.isOrganizerMode) {
@@ -216,12 +333,20 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 indication = null,
                 onClick = {},
                 onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    viewModel.toggleOrganizerMode(true)
+                    if (!uiState.isSettingsOpen) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.toggleOrganizerMode(true)
+                    }
                 }
             )
     ) {
-        if (uiState.mapEnabled) {
+        if (uiState.isBackgroundOverrideEnabled) {
+            DynamicWeatherBackground(
+                weatherCode = overrideBackgroundPreset.weatherCode,
+                weatherTimeIso = overrideBackgroundTimeIso,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (uiState.mapEnabled) {
             settledPageLocation?.let { location ->
                 MapBackground(
                     lat = location.lat,
@@ -480,6 +605,45 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 onBack = { viewModel.toggleSettings(false) }
             )
         }
+
+        if (uiState.isPerformanceOverlayEnabled) {
+            PerformanceOverlay(
+                lines = overlayLines,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 8.dp, top = 8.dp)
+                    .zIndex(20f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PerformanceOverlay(
+    lines: List<String>,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .widthIn(max = 340.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = lines.joinToString(separator = "\n"),
+            color = Color.White.copy(alpha = 0.78f),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color.Black,
+                    offset = Offset(0f, 0f),
+                    blurRadius = 6f
+                )
+            )
+        )
     }
 }
 
@@ -495,4 +659,30 @@ private fun hasFreshnessWarning(
     }
     val ageMs = (nowMs - updatedAtMs).coerceAtLeast(0L)
     return ageMs > thresholdMs || ageMs > staleServeWindowMs
+}
+
+private fun formatOverlayAge(nowMs: Long, updatedAtMs: Long): String {
+    if (updatedAtMs <= 0L) return "n/a"
+
+    val ageSec = ((nowMs - updatedAtMs).coerceAtLeast(0L) / 1000L)
+    return when {
+        ageSec < 60L -> "${ageSec}s"
+        ageSec < 3600L -> "${ageSec / 60L}m"
+        ageSec < 24L * 3600L -> {
+            val hours = ageSec / 3600L
+            val minutes = (ageSec % 3600L) / 60L
+            if (minutes == 0L) "${hours}h" else "${hours}h${minutes}m"
+        }
+
+        else -> {
+            val days = ageSec / (24L * 3600L)
+            val hours = (ageSec % (24L * 3600L)) / 3600L
+            if (hours == 0L) "${days}d" else "${days}d${hours}h"
+        }
+    }
+}
+
+private fun formatFrameMs(frameMs: Float): String {
+    if (frameMs <= 0f) return "-"
+    return String.format(Locale.US, "%.1f", frameMs)
 }
