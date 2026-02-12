@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.PressureUnit
 import com.example.anemoi.data.TempUnit
+import com.example.anemoi.ui.components.GlassEntryCard
 import com.example.anemoi.ui.components.SegmentedSelector
 import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.viewmodel.WeatherViewModel
@@ -193,11 +194,12 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column {
                             Text("Temperature", color = Color.White, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(8.dp))
                             
@@ -234,11 +236,12 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                     )
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column {
                             Text("Mode", color = Color.White, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(8.dp))
                             
@@ -320,11 +323,12 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                     )
 
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column {
                             if (hasOutdatedData) {
                                 warningDetails.forEach { detail ->
                                     Text(

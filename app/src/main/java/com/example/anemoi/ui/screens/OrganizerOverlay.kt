@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.anemoi.data.LocationItem
+import com.example.anemoi.ui.components.GlassEntryCard
 
 @Composable
 fun OrganizerOverlay(
@@ -178,7 +179,7 @@ fun OrganizerOverlay(
                     itemsIndexed(items, key = { _, item -> "${item.lat}_${item.lon}" }) { index, location ->
                         val isDragging = draggingIndex == index
                         
-                        Card(
+                        GlassEntryCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
@@ -205,11 +206,10 @@ fun OrganizerOverlay(
                                 .clickable(enabled = draggingIndex == null) { 
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onSelect(location) 
-                                },
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
+                                }
                         ) {
                             Row(
-                                modifier = Modifier.padding(16.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
