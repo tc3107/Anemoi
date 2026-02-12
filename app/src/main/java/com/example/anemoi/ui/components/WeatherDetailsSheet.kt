@@ -313,6 +313,12 @@ fun WeatherDetailsSheet(
                         minTemperatures = weather?.daily?.minTemp ?: emptyList(),
                         maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
                         precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
+                        hourlyTimes = hourlyTimes,
+                        hourlyWeatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
+                        hourlyTemperatures = weather?.hourly?.temperatures ?: emptyList(),
+                        hourlyPrecipitationProbabilities = weather?.hourly?.precipitationProbability ?: emptyList(),
+                        hourlyPrecipitations = weather?.hourly?.precipitation ?: emptyList(),
+                        currentTimeIso = currentTimeIso,
                         tempUnit = uiState.tempUnit,
                         modifier = Modifier.fillMaxWidth()
                     )

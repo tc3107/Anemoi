@@ -30,9 +30,16 @@ fun TemperatureGraph(
     currentTimeIso: String?,
     tempUnit: TempUnit,
     widgetTopToGraphTopInset: Dp = 24.dp,
+    yAxisLabelCount: Int = 6,
+    showXAxisLabels: Boolean = true,
+    hudReadingTextSizeSp: Float = 14f,
+    hudClockTextSizeSp: Float = 12f,
+    yAxisLabelHorizontalGap: Dp = 8.dp,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
+    val safeYAxisLabelCount = yAxisLabelCount.coerceAtLeast(2)
+    val yAxisSteps = safeYAxisLabelCount - 1
 
     val dayTemps = remember(temperatures) {
         if (temperatures.size >= 25) temperatures.take(25)
@@ -197,14 +204,14 @@ fun TemperatureGraph(
 
                         // Right-aligned Y-axis labels
                         val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                        val labels = (0 until 6).map { i ->
-                            val tempValue = yMin + (i / 5.0f * yRange)
+                        val labels = (0 until safeYAxisLabelCount).map { i ->
+                            val tempValue = yMin + (i / yAxisSteps.toFloat() * yRange)
                             textMeasurer.measure(formatTempWithUnit(tempValue), labelStyle)
                         }
-                        val alignRightX = l - 8.dp.toPx()
+                        val alignRightX = l - yAxisLabelHorizontalGap.toPx()
 
-                        for (i in 0 until 6) {
-                            val yPos = getYHUD(yMin + (i / 5.0f * yRange))
+                        for (i in 0 until safeYAxisLabelCount) {
+                            val yPos = getYHUD(yMin + (i / yAxisSteps.toFloat() * yRange))
                             val textLayout = labels[i]
                             drawText(textLayout, topLeft = Offset(alignRightX - textLayout.size.width, yPos - textLayout.size.height / 2))
                         }
@@ -231,8 +238,8 @@ fun TemperatureGraph(
                         val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
                         val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
                         val baseGap = 6.dp.toPx()
-                        val baseReadingTextSizeSp = 14f
-                        val baseClockTextSizeSp = 12f
+                        val baseReadingTextSizeSp = hudReadingTextSizeSp
+                        val baseClockTextSizeSp = hudClockTextSizeSp
 
                         val baseReadingStyle = TextStyle(
                             color = Color.White,
@@ -307,8 +314,8 @@ fun TemperatureGraph(
 
             // 1. Grid Lines
             val gridColor = Color.White.copy(alpha = 0.05f)
-            for (i in 0 until 6) {
-                val yPos = getY(yMin + (i / 5.0f * yRange))
+            for (i in 0 until safeYAxisLabelCount) {
+                val yPos = getY(yMin + (i / yAxisSteps.toFloat() * yRange))
                 drawLine(gridColor, Offset(l, yPos), Offset(l + drawW, yPos), 1.dp.toPx())
             }
 
@@ -316,8 +323,13 @@ fun TemperatureGraph(
             listOf(6, 12, 18).forEach { hour ->
                 val x = getX(hour / 24f)
                 drawLine(gridColor, Offset(x, t), Offset(x, t + drawH), 1.dp.toPx())
-                val textLayout = textMeasurer.measure(String.format("%02d", hour), TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp))
-                drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))
+                if (showXAxisLabels) {
+                    val textLayout = textMeasurer.measure(
+                        String.format("%02d", hour),
+                        TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp)
+                    )
+                    drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))
+                }
             }
 
             // 2. Paths

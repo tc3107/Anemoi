@@ -30,9 +30,16 @@ fun PrecipitationGraph(
     precipitations: List<Double>,
     currentTimeIso: String?,
     widgetTopToGraphTopInset: Dp = 24.dp,
+    yAxisLabelCount: Int = 5,
+    showXAxisLabels: Boolean = true,
+    hudReadingTextSizeSp: Float = 14f,
+    hudClockTextSizeSp: Float = 12f,
+    yAxisLabelHorizontalGap: Dp = 8.dp,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
+    val safeYAxisLabelCount = yAxisLabelCount.coerceAtLeast(2)
+    val yAxisSteps = safeYAxisLabelCount - 1
 
     val dayProbs = remember(probabilities) {
         if (probabilities.size >= 25) probabilities.take(25).map { it.toDouble() }
@@ -179,15 +186,15 @@ fun PrecipitationGraph(
                     // HUD Layer
                     if (drawW > 0 && drawH > 0) {
                         val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                        val labels = (0..4).map { i ->
-                            val mmValue = i * (snappedMaxPrecip / 4.0)
+                        val labels = (0 until safeYAxisLabelCount).map { i ->
+                            val mmValue = i * (snappedMaxPrecip / yAxisSteps.toDouble())
                             val labelText = if (snappedMaxPrecip <= 2.0) String.format("%.1f", mmValue) else mmValue.roundToInt().toString()
                             textMeasurer.measure("$labelText mm", labelStyle)
                         }
-                        val alignRightX = l - 8.dp.toPx()
+                        val alignRightX = l - yAxisLabelHorizontalGap.toPx()
 
-                        for (i in 0..4) {
-                            val yPos = t + drawH - (i / 4.0f * drawH)
+                        for (i in 0 until safeYAxisLabelCount) {
+                            val yPos = t + drawH - (i / yAxisSteps.toFloat() * drawH)
                             val textLayout = labels[i]
                             drawText(textLayout, topLeft = Offset(alignRightX - textLayout.size.width, yPos - textLayout.size.height / 2))
                         }
@@ -212,8 +219,8 @@ fun PrecipitationGraph(
                         val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
                         val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
                         val baseGap = 6.dp.toPx()
-                        val baseReadingTextSizeSp = 14f
-                        val baseClockTextSizeSp = 12f
+                        val baseReadingTextSizeSp = hudReadingTextSizeSp
+                        val baseClockTextSizeSp = hudClockTextSizeSp
 
                         val baseProbStyle = TextStyle(
                             color = Color.White,
@@ -281,8 +288,8 @@ fun PrecipitationGraph(
 
             // 1. Grid Lines
             val gridColor = Color.White.copy(alpha = 0.05f)
-            for (i in 0..4) {
-                val y = t + drawH - (i / 4.0f * drawH)
+            for (i in 0 until safeYAxisLabelCount) {
+                val y = t + drawH - (i / yAxisSteps.toFloat() * drawH)
                 drawLine(gridColor, Offset(l, y), Offset(l + drawW, y), 1.dp.toPx())
             }
 
@@ -290,8 +297,13 @@ fun PrecipitationGraph(
             listOf(6, 12, 18).forEach { hour ->
                 val x = getX(hour / 24f)
                 drawLine(gridColor, Offset(x, t), Offset(x, t + drawH), 1.dp.toPx())
-                val textLayout = textMeasurer.measure(String.format("%02d", hour), TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp))
-                drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))
+                if (showXAxisLabels) {
+                    val textLayout = textMeasurer.measure(
+                        String.format("%02d", hour),
+                        TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp)
+                    )
+                    drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))
+                }
             }
 
             // 3. Probability Area Shading
