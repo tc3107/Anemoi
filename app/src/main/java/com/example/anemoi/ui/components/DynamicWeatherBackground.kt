@@ -10,7 +10,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -22,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -30,6 +37,8 @@ import kotlin.random.Random
 fun DynamicWeatherBackground(
     weatherCode: Int?,
     weatherTimeIso: String?,
+    windSpeedKmh: Double = 0.0,
+    pageKey: Any? = null,
     modifier: Modifier = Modifier
 ) {
     val style = remember(weatherCode, weatherTimeIso) {
@@ -41,9 +50,95 @@ fun DynamicWeatherBackground(
 
     Box(modifier = modifier.fillMaxSize()) {
         AnimatedGradientSky(style = style)
+        SunRayLayer(style = style)
         AuroraBlobLayer(style = style)
-        WeatherParticleLayer(mode = style.particleMode)
+        WeatherParticleLayer(
+            mode = style.particleMode,
+            windSpeedKmh = windSpeedKmh,
+            rainIntensity = style.rainIntensity,
+            pageKey = pageKey
+        )
         NoiseLayer(alpha = style.noiseAlpha)
+    }
+}
+
+@Composable
+private fun SunRayLayer(style: BackgroundStyle) {
+    val rays = style.sunRays ?: return
+    val transition = rememberInfiniteTransition(label = "sun-rays")
+    val pulse = transition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = rays.pulseDurationMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sun-rays-pulse"
+    )
+    val sway = transition.animateFloat(
+        initialValue = -1.4f,
+        targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = rays.swayDurationMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sun-rays-sway"
+    )
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val source = Offset(
+            x = size.width * rays.sourceXFraction,
+            y = size.height * rays.sourceYFraction
+        )
+        val coreAlpha = (rays.coreAlpha * pulse.value).coerceIn(0f, 1f)
+        val glowRadius = size.minDimension * rays.glowRadiusFraction
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    rays.color.copy(alpha = coreAlpha * 0.46f),
+                    Color.Transparent
+                ),
+                center = source,
+                radius = glowRadius
+            )
+        )
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = coreAlpha * 0.26f),
+                    Color.Transparent
+                ),
+                center = source,
+                radius = glowRadius * 1.45f
+            )
+        )
+
+        val fanStep = if (rays.rayCount <= 1) 0f else rays.fanSweepDegrees / (rays.rayCount - 1)
+        repeat(rays.rayCount) { index ->
+            val angleDeg = rays.fanStartDegrees + fanStep * index + sway.value
+            val angleRad = angleDeg * PI.toFloat() / 180f
+            val end = Offset(
+                x = source.x + cos(angleRad) * size.minDimension * rays.rayLengthFraction,
+                y = source.y + sin(angleRad) * size.minDimension * rays.rayLengthFraction
+            )
+            val widthScale = 1f - abs(index - (rays.rayCount - 1) * 0.5f) / rays.rayCount.toFloat()
+            val rayWidth = size.minDimension * rays.rayWidthFraction * (0.9f + widthScale * 0.8f)
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        rays.color.copy(alpha = (rays.rayAlpha * pulse.value).coerceIn(0f, 1f)),
+                        rays.color.copy(alpha = (rays.rayAlpha * 0.35f * pulse.value).coerceIn(0f, 1f)),
+                        Color.Transparent
+                    ),
+                    start = source,
+                    end = end
+                ),
+                start = source,
+                end = end,
+                strokeWidth = rayWidth,
+                cap = StrokeCap.Round
+            )
+        }
     }
 }
 
@@ -134,10 +229,31 @@ private fun FloatingBlob(blob: BlobSpec, key: Int) {
 }
 
 @Composable
-private fun WeatherParticleLayer(mode: ParticleMode) {
+private fun WeatherParticleLayer(
+    mode: ParticleMode,
+    windSpeedKmh: Double,
+    rainIntensity: Float,
+    pageKey: Any?
+) {
     if (mode == ParticleMode.NONE) return
+    if (mode == ParticleMode.RAIN) {
+        LiveRainParticleLayer(
+            windSpeedKmh = windSpeedKmh,
+            rainIntensity = rainIntensity,
+            pageKey = pageKey
+        )
+        return
+    }
 
-    val particles = remember(mode) { buildParticles(mode) }
+    val seed = remember(mode, pageKey) {
+        when (mode) {
+            ParticleMode.STARS -> Random.nextInt()
+            ParticleMode.SNOW -> snowParticleSeed
+            ParticleMode.NONE -> noParticleSeed
+            ParticleMode.RAIN -> rainParticleSeed
+        }
+    }
+    val particles = remember(mode, seed) { buildParticles(mode, seed) }
     val transition = rememberInfiniteTransition(label = "particle-layer")
     val progress = transition.animateFloat(
         initialValue = 0f,
@@ -160,36 +276,6 @@ private fun WeatherParticleLayer(mode: ParticleMode) {
 
         particles.forEach { particle ->
             when (mode) {
-                ParticleMode.RAIN -> {
-                    val phase = ((cycle + particle.phase) * 2f * PI).toFloat()
-                    val y = ((particle.seedY + cycle * particle.speed) % 1f) * height
-                    val sway = sin(phase) * particle.drift
-                    val x = ((particle.seedX + sway).coerceIn(0f, 1f)) * width
-
-                    // Horizontal speed comes from the time derivative of the sway function.
-                    val horizontalSpeedNorm = cos(phase) * (2f * PI.toFloat()) * particle.drift
-                    val verticalSpeedNorm = particle.speed
-                    val horizontalSpeedPx = horizontalSpeedNorm * width
-                    val verticalSpeedPx = verticalSpeedNorm * height
-                    val absoluteSpeedPx = sqrt(
-                        horizontalSpeedPx * horizontalSpeedPx +
-                            verticalSpeedPx * verticalSpeedPx
-                    )
-
-                    val referenceSpeedPx = height * 2.2f
-                    val speedFactor = (absoluteSpeedPx / referenceSpeedPx).coerceIn(0.12f, 1f)
-                    val length = (0.02f + speedFactor * 0.08f) * height
-                    val slope = horizontalSpeedPx / verticalSpeedPx.coerceAtLeast(1f)
-                    val alpha = (0.08f + particle.alpha * 0.28f).coerceIn(0f, 1f)
-                    drawLine(
-                        color = Color.White.copy(alpha = alpha),
-                        start = Offset(x, y),
-                        end = Offset(x + slope * length, y + length),
-                        strokeWidth = (1.2f + particle.size * 1.6f),
-                        cap = StrokeCap.Round
-                    )
-                }
-
                 ParticleMode.SNOW -> {
                     val y = ((particle.seedY + cycle * particle.speed) % 1f) * height
                     val sway = sin(((cycle * 1.8f + particle.phase) * 2f * PI).toFloat()) * particle.drift
@@ -197,7 +283,7 @@ private fun WeatherParticleLayer(mode: ParticleMode) {
                     val alpha = (0.16f + particle.alpha * 0.5f).coerceIn(0f, 1f)
                     drawCircle(
                         color = Color.White.copy(alpha = alpha),
-                        radius = 1.1f + particle.size * 2.8f,
+                        radius = 1.35f + particle.size * 3.15f,
                         center = Offset(x, y)
                     )
                 }
@@ -215,7 +301,103 @@ private fun WeatherParticleLayer(mode: ParticleMode) {
                 }
 
                 ParticleMode.NONE -> Unit
+                ParticleMode.RAIN -> Unit
             }
+        }
+    }
+}
+
+@Composable
+private fun LiveRainParticleLayer(
+    windSpeedKmh: Double,
+    rainIntensity: Float,
+    pageKey: Any?
+) {
+    val simulationSeed = remember(pageKey) { Random.nextInt() }
+    val simulation = remember(simulationSeed, rainIntensity) {
+        createLiveRainSimulation(
+            seed = simulationSeed,
+            rainIntensity = rainIntensity
+        )
+    }
+    val latestWindSpeedKmh by rememberUpdatedState(windSpeedKmh)
+    var frameTick by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(simulation) {
+        var lastFrameNs = 0L
+        while (true) {
+            withFrameNanos { nowNs ->
+                if (lastFrameNs == 0L) {
+                    lastFrameNs = nowNs
+                    return@withFrameNanos
+                }
+                val dtSec = ((nowNs - lastFrameNs).toFloat() / 1_000_000_000f)
+                    .coerceIn(1f / 240f, 1f / 20f)
+                lastFrameNs = nowNs
+
+                stepLiveRainSimulation(
+                    simulation = simulation,
+                    dtSec = dtSec,
+                    windSpeedKmh = latestWindSpeedKmh
+                )
+                frameTick++
+            }
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        frameTick // Keep this draw scope subscribed to simulation frame updates.
+        val width = size.width
+        val height = size.height
+
+        simulation.drops.forEach { drop ->
+            val x = drop.xNorm * width
+            val y = drop.yNorm * height
+            val velocityX = drop.vxNormPerSec * width
+            val velocityY = drop.vyNormPerSec * height
+            val velocityMagnitude = sqrt(
+                velocityX * velocityX + velocityY * velocityY
+            ).coerceAtLeast(1f)
+            val dirX = velocityX / velocityMagnitude
+            val dirY = velocityY / velocityMagnitude
+
+            val speedFactor = (velocityMagnitude / (height * 2.4f)).coerceIn(0.4f, 1.8f)
+            val streakLength = (drop.baseLengthNorm * height * speedFactor)
+                .coerceIn(8f, height * 0.28f)
+            val head = Offset(x, y)
+            val tail = Offset(
+                x = x - dirX * streakLength,
+                y = y - dirY * streakLength
+            )
+            val mid = Offset(
+                x = (head.x + tail.x) * 0.5f,
+                y = (head.y + tail.y) * 0.5f
+            )
+
+            val pulse = 0.85f + 0.15f * sin(simulation.timeSec * 4.5f + drop.shimmerPhase)
+            val alpha = (drop.alpha * pulse).coerceIn(0.06f, 0.92f)
+
+            drawLine(
+                color = Color(0xFFB6D5FF).copy(alpha = alpha * 0.24f),
+                start = tail,
+                end = head,
+                strokeWidth = drop.thickness * 2f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color.White.copy(alpha = alpha),
+                start = tail,
+                end = head,
+                strokeWidth = drop.thickness,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFEAF5FF).copy(alpha = (alpha * 1.06f).coerceAtMost(1f)),
+                start = mid,
+                end = head,
+                strokeWidth = (drop.thickness * 0.62f).coerceAtLeast(0.7f),
+                cap = StrokeCap.Round
+            )
         }
     }
 }
@@ -250,16 +432,10 @@ private fun NoiseLayer(alpha: Float) {
     )
 }
 
-private fun buildParticles(mode: ParticleMode): List<ParticleSpec> {
-    val seed = when (mode) {
-        ParticleMode.RAIN -> 1183
-        ParticleMode.SNOW -> 4079
-        ParticleMode.STARS -> 7703
-        ParticleMode.NONE -> 31
-    }
+private fun buildParticles(mode: ParticleMode, seed: Int): List<ParticleSpec> {
     val count = when (mode) {
         ParticleMode.RAIN -> 54
-        ParticleMode.SNOW -> 42
+        ParticleMode.SNOW -> 52
         ParticleMode.STARS -> 72
         ParticleMode.NONE -> 0
     }
@@ -287,6 +463,130 @@ private fun buildParticles(mode: ParticleMode): List<ParticleSpec> {
         )
     }
 }
+
+private fun createLiveRainSimulation(
+    seed: Int,
+    rainIntensity: Float
+): LiveRainSimulation {
+    val random = Random(seed)
+    val particleCount = (liveRainParticleCount * rainIntensity).roundToInt()
+        .coerceIn(24, 260)
+    val drops = MutableList(particleCount) {
+        randomLiveRainDrop(random)
+    }
+    return LiveRainSimulation(
+        random = random,
+        drops = drops,
+        timeSec = random.nextFloat() * 25f
+    )
+}
+
+private fun stepLiveRainSimulation(
+    simulation: LiveRainSimulation,
+    dtSec: Float,
+    windSpeedKmh: Double
+) {
+    simulation.timeSec += dtSec
+    val timeSec = simulation.timeSec
+    val windNormPerSecond = windDriftNormPerSecond(windSpeedKmh)
+    val gust = (
+        sin(timeSec * 0.42f * twoPiF) * 0.09f +
+            sin(timeSec * 0.19f * twoPiF + 1.7f) * 0.06f +
+            sin(timeSec * 0.93f * twoPiF + 0.35f) * 0.03f
+        )
+
+    simulation.drops.indices.forEach { index ->
+        val drop = simulation.drops[index]
+        val turbulence = sin(timeSec * drop.turbulenceFreqHz * twoPiF + drop.turbulencePhase) *
+            drop.turbulenceAmp
+        val targetVx = windNormPerSecond * drop.windInfluence +
+            gust * (0.32f + drop.depth * 0.52f) +
+            turbulence
+        val response = (dtSec * drop.horizontalResponse).coerceIn(0f, 1f)
+        drop.vxNormPerSec += (targetVx - drop.vxNormPerSec) * response
+
+        val fallAccel = drop.fallAccelerationNormPerSec2 * (1f + abs(gust) * 0.1f)
+        drop.vyNormPerSec = (drop.vyNormPerSec + fallAccel * dtSec)
+            .coerceIn(drop.baseFallNormPerSec * 0.25f, drop.terminalFallNormPerSec)
+        drop.xNorm += drop.vxNormPerSec * dtSec
+        drop.yNorm += drop.vyNormPerSec * dtSec
+
+        if (
+            drop.yNorm > (1f + rainSimDespawnMarginBottom) ||
+            drop.xNorm < -rainSimDespawnMarginX ||
+            drop.xNorm > (1f + rainSimDespawnMarginX)
+        ) {
+            simulation.drops[index] = respawnLiveRainDrop(
+                random = simulation.random,
+                windNormPerSecond = windNormPerSecond
+            )
+        }
+    }
+}
+
+private fun respawnLiveRainDrop(
+    random: Random,
+    windNormPerSecond: Float
+): LiveRainDrop {
+    val drop = randomLiveRainDrop(random)
+    val sideSpawnChance = 0.32f + abs(windNormPerSecond).coerceAtMost(0.5f) * 0.35f
+    val spawnFromSide = random.nextFloat() < sideSpawnChance
+    val windRight = windNormPerSecond >= 0f
+    if (spawnFromSide) {
+        drop.xNorm = if (windRight) {
+            -rainSimSpawnMarginX * (0.6f + random.nextFloat() * 0.4f)
+        } else {
+            1f + rainSimSpawnMarginX * (0.6f + random.nextFloat() * 0.4f)
+        }
+        drop.yNorm = random.nextFloat() * (1f + rainSimSpawnMarginBottom * 0.5f) -
+            rainSimSpawnMarginTop
+    } else {
+        drop.xNorm = random.nextFloat() * (1f + rainSimSpawnMarginX * 2f) - rainSimSpawnMarginX
+        drop.yNorm = -random.nextFloat() * rainSimSpawnMarginTop
+    }
+    return drop
+}
+
+private fun randomLiveRainDrop(random: Random): LiveRainDrop {
+    val depth = random.nextFloat().let { it * it }
+    return LiveRainDrop(
+        xNorm = random.nextFloat() * (1f + rainSimSpawnMarginX * 2f) - rainSimSpawnMarginX,
+        yNorm = -random.nextFloat() * rainSimSpawnMarginTop,
+        vxNormPerSec = 0f,
+        vyNormPerSec = 0.28f + depth * 0.30f + random.nextFloat() * 0.14f,
+        depth = depth,
+        baseFallNormPerSec = 0.78f + depth * 1.1f + random.nextFloat() * 0.3f,
+        fallAccelerationNormPerSec2 = 1.9f + depth * 2.7f + random.nextFloat() * 0.9f,
+        terminalFallNormPerSec = 1.6f + depth * 2.05f + random.nextFloat() * 0.4f,
+        windInfluence = 0.62f + depth * 1.72f + random.nextFloat() * 0.36f,
+        turbulenceAmp = 0.008f + (1f - depth) * 0.012f + random.nextFloat() * 0.006f,
+        turbulenceFreqHz = 0.35f + depth * 1.6f + random.nextFloat() * 0.9f,
+        turbulencePhase = random.nextFloat() * twoPiF,
+        horizontalResponse = 4.5f + depth * 3.4f + random.nextFloat() * 1.1f,
+        thickness = 0.72f + depth * 2.35f + random.nextFloat() * 0.65f,
+        baseLengthNorm = 0.016f + depth * 0.09f + random.nextFloat() * 0.02f,
+        alpha = 0.12f + depth * 0.5f + random.nextFloat() * 0.14f,
+        shimmerPhase = random.nextFloat() * twoPiF
+    )
+}
+
+private fun windDriftNormPerSecond(windSpeedKmh: Double): Float {
+    val clampedSpeed = windSpeedKmh.coerceIn(0.0, 100.0)
+    val normalized = (clampedSpeed / 100.0).coerceIn(0.0, 1.0)
+    val baseline = normalized * normalized * 0.58 + normalized * 0.06
+    return (baseline * 3.0).toFloat()
+}
+
+private const val rainParticleSeed = 1183
+private const val snowParticleSeed = 4079
+private const val noParticleSeed = 31
+private const val liveRainParticleCount = 108
+private const val twoPiF = (2f * PI.toFloat())
+private const val rainSimSpawnMarginX = 0.7f
+private const val rainSimSpawnMarginTop = 1.45f
+private const val rainSimSpawnMarginBottom = 0.7f
+private const val rainSimDespawnMarginX = 1.0f
+private const val rainSimDespawnMarginBottom = 1.0f
 
 private fun resolveBackgroundStyle(weatherCode: Int?, weatherTimeIso: String?): BackgroundStyle {
     val isNight = isNightFromTime(weatherTimeIso)
@@ -333,43 +633,58 @@ private fun mapWeatherFamily(weatherCode: Int?): WeatherFamily {
 
 private fun sunnyStyle() = BackgroundStyle(
     gradientColors = listOf(
-        Color(0xFFF6D365),
-        Color(0xFFFDA085),
-        Color(0xFFFBC2EB)
+        Color(0xFF9DB6CA),
+        Color(0xFF7F98AF),
+        Color(0xFF526B81)
     ),
-    glowColor = Color(0xFFFFF4C0).copy(alpha = 0.28f),
+    glowColor = Color(0xFFFFEAB7).copy(alpha = 0.24f),
     particleMode = ParticleMode.NONE,
+    sunRays = SunRaysSpec(
+        color = Color(0xFFFFE8B2),
+        coreAlpha = 0.98f,
+        rayAlpha = 0.18f,
+        sourceXFraction = 1.16f,
+        sourceYFraction = -0.18f,
+        glowRadiusFraction = 1.8f,
+        rayCount = 7,
+        rayLengthFraction = 1.48f,
+        rayWidthFraction = 0.05f,
+        fanStartDegrees = 146f,
+        fanSweepDegrees = 96f,
+        pulseDurationMs = 17000,
+        swayDurationMs = 26000
+    ),
     noiseAlpha = 0.05f,
     gradientDurationMs = 17000,
     blobs = listOf(
         BlobSpec(
-            color = Color(0xFFFFA69E),
+            color = Color(0xFFB7C7D8),
             size = 360.dp,
-            alpha = 0.52f,
-            startX = (-120).dp,
-            startY = (-100).dp,
-            driftX = 70.dp,
-            driftY = 30.dp,
+            alpha = 0.34f,
+            startX = (-110).dp,
+            startY = (-85).dp,
+            driftX = 50.dp,
+            driftY = 26.dp,
             durationMs = 20000
         ),
         BlobSpec(
-            color = Color(0xFFA18CD1),
-            size = 420.dp,
-            alpha = 0.46f,
-            startX = 170.dp,
+            color = Color(0xFF8EA5BE),
+            size = 390.dp,
+            alpha = 0.25f,
+            startX = 200.dp,
             startY = 430.dp,
-            driftX = (-80).dp,
-            driftY = (-55).dp,
+            driftX = (-58).dp,
+            driftY = (-42).dp,
             durationMs = 26000
         ),
         BlobSpec(
-            color = Color(0xFFFFD5A8),
-            size = 300.dp,
-            alpha = 0.38f,
-            startX = 160.dp,
-            startY = (-90).dp,
-            driftX = (-40).dp,
-            driftY = 36.dp,
+            color = Color(0xFFFFE7A8),
+            size = 280.dp,
+            alpha = 0.2f,
+            startX = 220.dp,
+            startY = (-120).dp,
+            driftX = (-34).dp,
+            driftY = 24.dp,
             durationMs = 24000
         )
     )
@@ -411,11 +726,11 @@ private fun rainyStyle() = BackgroundStyle(
 
 private fun snowyStyle() = BackgroundStyle(
     gradientColors = listOf(
-        Color(0xFFBFD8F0),
+        Color(0xFFA9C1D8),
         Color(0xFF8FAFC6),
         Color(0xFF567189)
     ),
-    glowColor = Color(0xFFEAF6FF).copy(alpha = 0.22f),
+    glowColor = Color(0xFFEAF6FF).copy(alpha = 0.16f),
     particleMode = ParticleMode.SNOW,
     noiseAlpha = 0.06f,
     gradientDurationMs = 20000,
@@ -451,6 +766,7 @@ private fun stormStyle() = BackgroundStyle(
     ),
     glowColor = Color(0xFFC7D6E6).copy(alpha = 0.14f),
     particleMode = ParticleMode.RAIN,
+    rainIntensity = 1.55f,
     noiseAlpha = 0.06f,
     gradientDurationMs = 16000,
     blobs = listOf(
@@ -479,11 +795,11 @@ private fun stormStyle() = BackgroundStyle(
 
 private fun cloudyStyle() = BackgroundStyle(
     gradientColors = listOf(
-        Color(0xFF8DA1B9),
+        Color(0xFF7489A0),
         Color(0xFF667E96),
         Color(0xFF425466)
     ),
-    glowColor = Color(0xFFDDE7F2).copy(alpha = 0.16f),
+    glowColor = Color(0xFFDDE7F2).copy(alpha = 0.11f),
     particleMode = ParticleMode.NONE,
     noiseAlpha = 0.05f,
     gradientDurationMs = 18500,
@@ -621,6 +937,7 @@ private fun nightStormStyle() = BackgroundStyle(
     ),
     glowColor = Color(0xFF9BB6D3).copy(alpha = 0.12f),
     particleMode = ParticleMode.RAIN,
+    rainIntensity = 1.55f,
     noiseAlpha = 0.075f,
     gradientDurationMs = 16500,
     blobs = listOf(
@@ -666,9 +983,27 @@ private data class BackgroundStyle(
     val gradientColors: List<Color>,
     val glowColor: Color?,
     val particleMode: ParticleMode,
+    val rainIntensity: Float = 1f,
+    val sunRays: SunRaysSpec? = null,
     val noiseAlpha: Float,
     val gradientDurationMs: Int,
     val blobs: List<BlobSpec>
+)
+
+private data class SunRaysSpec(
+    val color: Color,
+    val coreAlpha: Float,
+    val rayAlpha: Float,
+    val sourceXFraction: Float,
+    val sourceYFraction: Float,
+    val glowRadiusFraction: Float,
+    val rayCount: Int,
+    val rayLengthFraction: Float,
+    val rayWidthFraction: Float,
+    val fanStartDegrees: Float,
+    val fanSweepDegrees: Float,
+    val pulseDurationMs: Int,
+    val swayDurationMs: Int
 )
 
 private data class BlobSpec(
@@ -690,4 +1025,30 @@ private data class ParticleSpec(
     val drift: Float,
     val phase: Float,
     val alpha: Float
+)
+
+private data class LiveRainSimulation(
+    val random: Random,
+    val drops: MutableList<LiveRainDrop>,
+    var timeSec: Float
+)
+
+private data class LiveRainDrop(
+    var xNorm: Float,
+    var yNorm: Float,
+    var vxNormPerSec: Float,
+    var vyNormPerSec: Float,
+    val depth: Float,
+    val baseFallNormPerSec: Float,
+    val fallAccelerationNormPerSec2: Float,
+    val terminalFallNormPerSec: Float,
+    val windInfluence: Float,
+    val turbulenceAmp: Float,
+    val turbulenceFreqHz: Float,
+    val turbulencePhase: Float,
+    val horizontalResponse: Float,
+    val thickness: Float,
+    val baseLengthNorm: Float,
+    val alpha: Float,
+    val shimmerPhase: Float
 )

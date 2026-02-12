@@ -101,6 +101,7 @@ data class WeatherUiState(
     val isPerformanceOverlayEnabled: Boolean = false,
     val isBackgroundOverrideEnabled: Boolean = false,
     val backgroundOverridePresetIndex: Int = 0,
+    val backgroundOverrideWindSpeedKmh: Float = 0f,
     val errors: List<String> = emptyList(),
     val tempUnit: TempUnit = TempUnit.CELSIUS,
     val pressureUnit: PressureUnit = PressureUnit.HPA,
@@ -262,6 +263,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val aPerformanceOverlayEnabledLegacyKey = booleanPreferencesKey("aperformance_overlay_enabled")
     private val backgroundOverrideEnabledKey = booleanPreferencesKey("background_override_enabled")
     private val backgroundOverridePresetIndexKey = intPreferencesKey("background_override_preset_index")
+    private val backgroundOverrideWindSpeedKmhKey = floatPreferencesKey("background_override_wind_speed_kmh")
 
     private val whitespaceRegex = Regex("\\s+")
 
@@ -380,6 +382,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     isBackgroundOverrideEnabled = prefs[backgroundOverrideEnabledKey] ?: false,
                     backgroundOverridePresetIndex = (prefs[backgroundOverridePresetIndexKey] ?: 0)
                         .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
+                    backgroundOverrideWindSpeedKmh = (prefs[backgroundOverrideWindSpeedKmhKey] ?: 0f)
+                        .coerceIn(0f, 100f),
                     tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
                     pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
                     windUnit = prefs[windUnitKey]?.let { WindUnit.valueOf(it) } ?: WindUnit.KMH,
@@ -1065,6 +1069,14 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         _uiState.update { it.copy(backgroundOverridePresetIndex = clamped) }
         viewModelScope.launch {
             applicationContext.dataStore.edit { it[backgroundOverridePresetIndexKey] = clamped }
+        }
+    }
+
+    fun setBackgroundOverrideWindSpeedKmh(speedKmh: Float) {
+        val clamped = speedKmh.coerceIn(0f, 100f)
+        _uiState.update { it.copy(backgroundOverrideWindSpeedKmh = clamped) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[backgroundOverrideWindSpeedKmhKey] = clamped }
         }
     }
 

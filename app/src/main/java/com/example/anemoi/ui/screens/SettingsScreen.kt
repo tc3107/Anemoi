@@ -582,6 +582,30 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                             inactiveTrackColor = Color.White.copy(alpha = 0.35f)
                                         )
                                     )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Forced Wind Speed",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "${uiState.backgroundOverrideWindSpeedKmh.roundToInt()} km/h",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Slider(
+                                        value = uiState.backgroundOverrideWindSpeedKmh,
+                                        onValueChange = viewModel::setBackgroundOverrideWindSpeedKmh,
+                                        valueRange = 0f..100f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color.White,
+                                            activeTrackColor = Color.White,
+                                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                                        )
+                                    )
                                 }
                             }
                         }
