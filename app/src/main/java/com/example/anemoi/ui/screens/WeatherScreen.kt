@@ -8,22 +8,23 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -204,6 +205,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val currentTintAlpha = if (uiState.customValuesEnabled) uiState.searchBarTintAlpha else 0.15f
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
+    val statusBarInsetTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val warningStaleServeWindowMs = 12 * 60 * 60 * 1000L
     val warningCurrentThresholdMs = 5 * 60 * 1000L
     val warningHourlyThresholdMs = 20 * 60 * 1000L
@@ -413,66 +415,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .statusBarsPadding()
+                                    .padding(top = statusBarInsetTop + 2.dp)
                             ) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val isLocActive = pagerState.currentPage == 0
-                                    Icon(
-                                        imageVector = Icons.Default.MyLocation,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (uiState.locationFound && isLocActive) {
-                                            Color.Green
-                                        } else if (isLocActive) {
-                                            Color.White
-                                        } else {
-                                            Color.White.copy(alpha = 0.5f)
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    repeat(favorites.size) { index ->
-                                        val location = favorites[index]
-                                        val key = "${location.lat},${location.lon}"
-                                        val status = uiState.pageStatuses[key]
-                                        val isActive = pagerState.currentPage == index + 1
-                                        val dotColor = when (status) {
-                                            true -> if (isActive) Color.Green else Color.White.copy(alpha = 0.5f)
-                                            false -> if (isActive) Color.Red else Color.White.copy(alpha = 0.5f)
-                                            null -> if (isActive) Color.White else Color.White.copy(alpha = 0.5f)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(dotColor)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-
-                                    if (searchedLocation != null) {
-                                        val isActive = pagerState.currentPage == totalPages - 1
-                                        val key = "${searchedLocation.lat},${searchedLocation.lon}"
-                                        val status = uiState.pageStatuses[key]
-                                        Icon(
-                                            imageVector = Icons.Default.Search,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = when (status) {
-                                                true -> if (isActive) Color.Green else Color.White.copy(alpha = 0.5f)
-                                                false -> if (isActive) Color.Red else Color.White.copy(alpha = 0.5f)
-                                                null -> if (isActive) Color.White else Color.White.copy(alpha = 0.5f)
-                                            }
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
                                 SearchBar(
                                     query = uiState.searchQuery,
                                     onQueryChange = viewModel::onSearchQueryChanged,
@@ -565,22 +509,34 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
                         .zIndex(3f)
                 ) {
-                    if (uiState.isLoading) {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.dp),
-                            color = Color.White,
-                            trackColor = Color.Transparent
-                        )
-                    }
-                    if (uiState.isLocating) {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.dp),
-                            color = Color(0xFF4285F4),
-                            trackColor = Color.Transparent
-                        )
+                    TopPageStatusStrip(
+                        favorites = favorites,
+                        searchedLocation = searchedLocation,
+                        pageStatuses = uiState.pageStatuses,
+                        currentPage = pagerState.currentPage,
+                        totalPages = totalPages,
+                        locationFound = uiState.locationFound,
+                        tintAlpha = currentTintAlpha,
+                        blurStrength = currentBlurStrength,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Column(modifier = Modifier.statusBarsPadding()) {
+                        if (uiState.isLoading) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(2.dp),
+                                color = Color.White,
+                                trackColor = Color.Transparent
+                            )
+                        }
+                        if (uiState.isLocating) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(2.dp),
+                                color = Color(0xFF4285F4),
+                                trackColor = Color.Transparent
+                            )
+                        }
                     }
                 }
             }
@@ -618,6 +574,15 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         }
 
         if (uiState.isPerformanceOverlayEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = statusBarInsetTop)
+                    .width(18.dp)
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.92f))
+                    .zIndex(21f)
+            )
             PerformanceOverlay(
                 lines = overlayLines,
                 modifier = Modifier
@@ -626,6 +591,107 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     .padding(start = 8.dp, top = 8.dp)
                     .zIndex(20f)
             )
+        }
+    }
+}
+
+@Composable
+private fun TopPageStatusStrip(
+    favorites: List<LocationItem>,
+    searchedLocation: LocationItem?,
+    pageStatuses: Map<String, Boolean?>,
+    currentPage: Int,
+    totalPages: Int,
+    locationFound: Boolean,
+    tintAlpha: Float,
+    blurStrength: Float,
+    modifier: Modifier = Modifier
+) {
+    val sectionColors = buildList {
+        val isLocationActive = currentPage == 0
+        add(
+            if (isLocationActive) {
+                if (locationFound) Color(0xFF4285F4) else Color.White
+            } else {
+                Color(0xFF8FB8FF).copy(alpha = 0.64f)
+            }
+        )
+
+        favorites.forEachIndexed { index, location ->
+            val isActive = currentPage == index + 1
+            val key = "${location.lat},${location.lon}"
+            val status = pageStatuses[key]
+            add(
+                when {
+                    isActive && status == true -> Color.Green
+                    isActive && status == false -> Color.Red
+                    isActive -> Color.White
+                    else -> Color.White.copy(alpha = 0.5f)
+                }
+            )
+        }
+
+        if (searchedLocation != null) {
+            val isActive = currentPage == totalPages - 1
+            val key = "${searchedLocation.lat},${searchedLocation.lon}"
+            val status = pageStatuses[key]
+            add(
+                when {
+                    isActive && status == true -> Color.Green
+                    isActive && status == false -> Color.Red
+                    isActive -> Color.White
+                    else -> Color.White.copy(alpha = 0.32f)
+                }
+            )
+        }
+    }
+
+    val stripShape = RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)
+    Box(
+        modifier = modifier
+            .height(10.dp)
+            .clip(stripShape)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.22f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.05f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.08f)
+                    )
+                ),
+                shape = stripShape
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .blur((blurStrength * 0.55f).coerceAtLeast(0f).dp)
+                .background(Color.White.copy(alpha = tintAlpha.coerceIn(0f, 1f) * 0.85f))
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            sectionColors.forEach { sectionColor ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(sectionColor)
+                )
+            }
         }
     }
 }
