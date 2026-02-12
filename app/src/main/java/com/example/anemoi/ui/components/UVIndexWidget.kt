@@ -164,7 +164,7 @@ fun UVIndexWidget(
             Spacer(modifier = Modifier.size(28.dp))
             Text(
                 text = displayValue,
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.9f),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )

@@ -29,6 +29,7 @@ import com.example.anemoi.data.OpenMeteoService
 import com.example.anemoi.data.PressureUnit
 import com.example.anemoi.data.TempUnit
 import com.example.anemoi.data.WeatherResponse
+import com.example.anemoi.data.WindUnit
 import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.util.dataStore
@@ -103,6 +104,7 @@ data class WeatherUiState(
     val errors: List<String> = emptyList(),
     val tempUnit: TempUnit = TempUnit.CELSIUS,
     val pressureUnit: PressureUnit = PressureUnit.HPA,
+    val windUnit: WindUnit = WindUnit.KMH,
     val customValuesEnabled: Boolean = false,
     val mapEnabled: Boolean = true,
     val mapZoom: Float = 16f,
@@ -241,6 +243,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val followModeKey = booleanPreferencesKey("follow_mode")
     private val tempUnitKey = stringPreferencesKey("temp_unit")
     private val pressureUnitKey = stringPreferencesKey("pressure_unit")
+    private val windUnitKey = stringPreferencesKey("wind_unit")
     private val customValuesKey = booleanPreferencesKey("custom_values_enabled")
     private val mapEnabledKey = booleanPreferencesKey("map_enabled")
     private val mapZoomKey = floatPreferencesKey("map_zoom")
@@ -281,7 +284,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private val backoffStepsMs = longArrayOf(5_000L, 15_000L, 60_000L, 5 * 60_000L)
 
-    private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index"
+    private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
     private val staleDataError = "Weather cache is missing or older than 12 hours"
 
@@ -379,6 +382,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                         .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
                     tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
                     pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
+                    windUnit = prefs[windUnitKey]?.let { WindUnit.valueOf(it) } ?: WindUnit.KMH,
                     customValuesEnabled = prefs[customValuesKey] ?: false,
                     mapEnabled = prefs[mapEnabledKey] ?: true,
                     mapZoom = prefs[mapZoomKey] ?: 16f,
@@ -847,6 +851,15 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         viewModelScope.launch {
             applicationContext.dataStore.edit { settings ->
                 settings[pressureUnitKey] = unit.name
+            }
+        }
+    }
+
+    fun setWindUnit(unit: WindUnit) {
+        _uiState.update { it.copy(windUnit = unit) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { settings ->
+                settings[windUnitKey] = unit.name
             }
         }
     }

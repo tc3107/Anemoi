@@ -48,7 +48,10 @@ data class HourlyData(
     @SerialName("surface_pressure") val pressures: List<Double>? = null,
     @SerialName("precipitation_probability") val precipitationProbability: List<Int>? = null,
     val precipitation: List<Double>? = null,
-    @SerialName("uv_index") val uvIndex: List<Double>? = null
+    @SerialName("uv_index") val uvIndex: List<Double>? = null,
+    @SerialName("wind_speed_10m") val windSpeeds: List<Double>? = null,
+    @SerialName("wind_direction_10m") val windDirections: List<Double>? = null,
+    @SerialName("wind_gusts_10m") val windGusts: List<Double>? = null
 )
 
 @Serializable
@@ -83,4 +86,8 @@ enum class TempUnit {
 
 enum class PressureUnit(val label: String) {
     HPA("hPa"), MMHG("mmHg"), INHG("inHg"), MBAR("mbar")
+}
+
+enum class WindUnit(val label: String) {
+    KMH("km/h"), MPH("mph"), MS("m/s"), KNOTS("knots")
 }

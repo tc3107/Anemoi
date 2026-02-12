@@ -58,9 +58,9 @@ fun PressureDial(
 
             val startAngle = 135f
             val totalSweep = 270f
-            val numTicks = 44
+            val numTicks = 48
             val tickLength = 12.dp.toPx()
-            val tickThickness = 2.8.dp.toPx()
+            val tickThickness = 1.35.dp.toPx()
             val indicatorLength = 20.dp.toPx()
             val indicatorThickness = 4.dp.toPx()
             // Keep outermost rendered geometry inside the same visual bounds as other dials.
@@ -74,8 +74,7 @@ fun PressureDial(
             
             val currentAngle = if (progress != null) startAngle + progress * totalSweep else null
 
-            // Use a slightly whiter uniform grey for all ticks
-            val tickColor = Color.White.copy(alpha = 0.45f)
+            val tickColor = Color(0xFFC9CED5).copy(alpha = 0.24f)
 
             // Draw all regular ticks
             for (i in 0..numTicks) {
@@ -95,7 +94,7 @@ fun PressureDial(
                     start = Offset(startX, startY),
                     end = Offset(endX, endY),
                     strokeWidth = tickThickness,
-                    cap = StrokeCap.Butt
+                    cap = StrokeCap.Round
                 )
             }
             
@@ -132,7 +131,7 @@ fun PressureDial(
             
             Text(
                 text = displayValue?.let { formatPressure(it, unit) } ?: "--",
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.9f),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )

@@ -1,5 +1,15 @@
 package com.example.anemoi.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -19,12 +29,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.PressureUnit
 import com.example.anemoi.data.TempUnit
+import com.example.anemoi.data.WindUnit
 import com.example.anemoi.ui.components.GlassEntryCard
 import com.example.anemoi.ui.components.SegmentedSelector
 import com.example.anemoi.util.ObfuscationMode
@@ -36,7 +48,9 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val compassSensorAccessState = rememberCompassSensorAccessState()
     var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
     var draftGridKm by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.gridKm) }
     val backgroundPresetMaxIndex = backgroundOverridePresets.lastIndex.coerceAtLeast(0)
@@ -69,6 +83,16 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
     val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
 
+    val compassWarningLine = when (compassSensorAccessState) {
+        CompassSensorAccessState.Checking,
+        CompassSensorAccessState.Available -> null
+        CompassSensorAccessState.UnavailableNoHardware ->
+            "Compass sensors are not available on this device."
+        CompassSensorAccessState.UnavailableNoReadings ->
+            "Compass sensor access is unavailable. Wind dial stays north-up."
+    }
+    val showCompassAccessButton = compassWarningLine != null
+
     val warningDetails = buildList {
         buildFreshnessWarningLine(
             label = "Current conditions",
@@ -100,6 +124,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
         if (key != null && !isSignatureMatch) {
             add("Data was fetched with different privacy settings.")
         }
+        compassWarningLine?.let { add(it) }
     }
     val hasOutdatedData = warningDetails.isNotEmpty()
 
@@ -222,6 +247,16 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 options = PressureUnit.values().map { it.label },
                                 selectedIndex = PressureUnit.values().indexOf(uiState.pressureUnit),
                                 onOptionSelected = { viewModel.setPressureUnit(PressureUnit.values()[it]) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Wind Speed", color = Color.White, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            SegmentedSelector(
+                                options = WindUnit.values().map { it.label },
+                                selectedIndex = WindUnit.values().indexOf(uiState.windUnit),
+                                onOptionSelected = { viewModel.setWindUnit(WindUnit.values()[it]) }
                             )
                         }
                     }
@@ -399,6 +434,37 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
+
+                            if (showCompassAccessButton) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        requestCompassSensorAccess(context)
+                                    },
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = Color.Transparent,
+                                        contentColor = Color.White
+                                    ),
+                                    border = BorderStroke(
+                                        width = 1.dp,
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color.White.copy(alpha = 0.45f),
+                                                Color.White.copy(alpha = 0.20f)
+                                            )
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Request Sensor Access",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -556,6 +622,89 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+private enum class CompassSensorAccessState {
+    Checking,
+    Available,
+    UnavailableNoHardware,
+    UnavailableNoReadings
+}
+
+@Composable
+private fun rememberCompassSensorAccessState(): CompassSensorAccessState {
+    val context = LocalContext.current
+    return produceState(
+        initialValue = CompassSensorAccessState.Checking,
+        key1 = context
+    ) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        if (sensorManager == null) {
+            value = CompassSensorAccessState.UnavailableNoHardware
+            return@produceState
+        }
+
+        val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+
+        if (rotationVectorSensor == null && (accelerometerSensor == null || magneticSensor == null)) {
+            value = CompassSensorAccessState.UnavailableNoHardware
+            return@produceState
+        }
+
+        var hasReading = false
+        val timeoutHandler = Handler(Looper.getMainLooper())
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (!hasReading) {
+                    hasReading = true
+                    value = CompassSensorAccessState.Available
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        if (rotationVectorSensor != null) {
+            sensorManager.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            sensorManager.registerListener(listener, accelerometerSensor, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(listener, magneticSensor, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        val timeoutRunnable = Runnable {
+            if (!hasReading) {
+                value = CompassSensorAccessState.UnavailableNoReadings
+            }
+        }
+        timeoutHandler.postDelayed(timeoutRunnable, 1500L)
+
+        awaitDispose {
+            timeoutHandler.removeCallbacks(timeoutRunnable)
+            sensorManager.unregisterListener(listener)
+        }
+    }.value
+}
+
+private fun requestCompassSensorAccess(context: Context) {
+    val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val privacyIntent = Intent(Settings.ACTION_PRIVACY_SETTINGS).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val target = if (privacyIntent.resolveActivity(context.packageManager) != null) {
+        privacyIntent
+    } else {
+        appDetailsIntent
+    }
+    runCatching {
+        context.startActivity(target)
+    }.onFailure {
+        context.startActivity(appDetailsIntent)
     }
 }
 

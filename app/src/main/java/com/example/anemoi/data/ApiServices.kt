@@ -23,7 +23,7 @@ interface OpenMeteoService {
         @Query("latitude") lat: Double,
         @Query("longitude") lon: Double,
         @Query("current_weather") currentWeather: Boolean? = true,
-        @Query("hourly") hourly: String? = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index",
+        @Query("hourly") hourly: String? = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
         @Query("daily") daily: String? = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max",
         @Query("forecast_days") forecastDays: Int = 10,
         @Query("timezone") timezone: String = "auto"

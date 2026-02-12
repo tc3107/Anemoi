@@ -280,6 +280,71 @@ fun WeatherDetailsSheet(
                         }
                     }
                     DetailWidgetContainer(
+                        label = "WIND",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 4.dp
+                    ) { _ ->
+                        val currentTimeIso = weather?.currentWeather?.time
+                        val currentHourPrefix = currentTimeIso?.substringBefore(":")
+                        val currentHourIdx = if (!currentHourPrefix.isNullOrEmpty()) {
+                            weather?.hourly?.time?.indexOfFirst {
+                                it.startsWith(currentHourPrefix)
+                            } ?: -1
+                        } else {
+                            -1
+                        }
+
+                        val hourlyWindSpeeds = weather?.hourly?.windSpeeds ?: emptyList()
+                        val hourlyWindDirections = weather?.hourly?.windDirections ?: emptyList()
+                        val hourlyWindGusts = weather?.hourly?.windGusts ?: emptyList()
+
+                        val fallbackWindSpeed = if (currentHourIdx != -1 && currentHourIdx < hourlyWindSpeeds.size) {
+                            hourlyWindSpeeds[currentHourIdx]
+                        } else {
+                            null
+                        }
+
+                        val fallbackWindDirection = if (currentHourIdx != -1 && currentHourIdx < hourlyWindDirections.size) {
+                            hourlyWindDirections[currentHourIdx]
+                        } else {
+                            null
+                        }
+
+                        val currentGust = if (currentHourIdx != -1 && currentHourIdx < hourlyWindGusts.size) {
+                            hourlyWindGusts[currentHourIdx]
+                        } else {
+                            null
+                        }
+
+                        val todayPrefix = currentTimeIso?.substringBefore("T")
+                            ?: weather?.hourly?.time?.firstOrNull()?.substringBefore("T")
+
+                        val maxGustToday = if (!todayPrefix.isNullOrEmpty() && hourlyWindGusts.isNotEmpty()) {
+                            weather?.hourly?.time
+                                ?.mapIndexedNotNull { index, iso ->
+                                    if (index < hourlyWindGusts.size && iso.startsWith(todayPrefix)) {
+                                        hourlyWindGusts[index]
+                                    } else {
+                                        null
+                                    }
+                                }
+                                ?.maxOrNull()
+                        } else {
+                            null
+                        }
+
+                        WindCompassWidget(
+                            windSpeedKmh = weather?.currentWeather?.windSpeed ?: fallbackWindSpeed,
+                            windDirectionDegrees = weather?.currentWeather?.windDirection ?: fallbackWindDirection,
+                            gustSpeedKmh = currentGust,
+                            maxGustKmh = maxGustToday,
+                            unit = uiState.windUnit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    DetailWidgetContainer(
                         label = daylightLabel,
                         modifier = Modifier
                             .fillMaxWidth()
