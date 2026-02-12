@@ -40,6 +40,7 @@ fun OrganizerOverlay(
     onReorder: (Int, Int) -> Unit,
     onToggleFavorite: (LocationItem) -> Unit,
     onRenameLocation: (LocationItem, String?) -> Unit,
+    onSelectCurrentLocation: () -> Unit,
     onSelect: (LocationItem) -> Unit,
     onClose: () -> Unit
 ) {
@@ -107,6 +108,31 @@ fun OrganizerOverlay(
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 16.dp)
+                )
+
+                GlassEntryCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onSelectCurrentLocation()
+                        }
+                ) {
+                    Text(
+                        text = "Current Location",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 16.dp),
+                    color = Color.White.copy(alpha = 0.24f)
                 )
 
                 LazyColumn(
