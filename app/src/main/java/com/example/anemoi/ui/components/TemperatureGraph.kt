@@ -336,11 +336,11 @@ fun TemperatureGraph(
             // 4. Shading
             val fullPath = createSmoothPath(0f, 1f)
             val fillPath = Path().apply { addPath(fullPath); lineTo(l + drawW, t + drawH); lineTo(l, t + drawH); close() }
-            drawPath(fillPath, brush = Brush.verticalGradient(colors = listOf(Color(0xFF81D4FA).copy(alpha = 0.45f), Color(0xFF01579B).copy(alpha = 0.15f)), startY = getY(maxVal), endY = t + drawH))
+            drawPath(fillPath, brush = Brush.verticalGradient(colors = listOf(Color(0xFF6EC9F7).copy(alpha = 0.45f), Color(0xFF01579B).copy(alpha = 0.15f)), startY = getY(maxVal), endY = t + drawH))
 
             // 5. Lines
             val lineStrokeWidth = 5.dp.toPx()
-            val lineBrush = Brush.linearGradient(colors = listOf(Color(0xFF81D4FA), Color(0xFF0288D1)), start = Offset(l, t + drawH / 2), end = Offset(l + drawW, t + drawH / 2))
+            val lineBrush = Brush.linearGradient(colors = listOf(Color(0xFF6EC9F7), Color(0xFF0288D1)), start = Offset(l, t + drawH / 2), end = Offset(l + drawW, t + drawH / 2))
             drawPath(createSmoothPath(0f, curF), brush = lineBrush, style = Stroke(width = lineStrokeWidth, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 28f), 0f)))
             drawPath(createSmoothPath(curF, 1f), brush = lineBrush, style = Stroke(width = lineStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
 

@@ -633,34 +633,20 @@ private fun mapWeatherFamily(weatherCode: Int?): WeatherFamily {
 
 private fun sunnyStyle() = BackgroundStyle(
     gradientColors = listOf(
-        Color(0xFF9DB6CA),
-        Color(0xFF7F98AF),
-        Color(0xFF526B81)
+        Color(0xFF163B74),
+        Color(0xFF2E5C9A),
+        Color(0xFF4A78B2),
+        Color(0xFFE3924C)
     ),
-    glowColor = Color(0xFFFFEAB7).copy(alpha = 0.24f),
+    glowColor = Color(0xFFFFB56A).copy(alpha = 0.1f),
     particleMode = ParticleMode.NONE,
-    sunRays = SunRaysSpec(
-        color = Color(0xFFFFE8B2),
-        coreAlpha = 0.98f,
-        rayAlpha = 0.18f,
-        sourceXFraction = 1.16f,
-        sourceYFraction = -0.18f,
-        glowRadiusFraction = 1.8f,
-        rayCount = 7,
-        rayLengthFraction = 1.48f,
-        rayWidthFraction = 0.05f,
-        fanStartDegrees = 146f,
-        fanSweepDegrees = 96f,
-        pulseDurationMs = 17000,
-        swayDurationMs = 26000
-    ),
     noiseAlpha = 0.05f,
     gradientDurationMs = 17000,
     blobs = listOf(
         BlobSpec(
-            color = Color(0xFFB7C7D8),
+            color = Color(0xFFB1C7E4),
             size = 360.dp,
-            alpha = 0.34f,
+            alpha = 0.31f,
             startX = (-110).dp,
             startY = (-85).dp,
             driftX = 50.dp,
@@ -668,7 +654,7 @@ private fun sunnyStyle() = BackgroundStyle(
             durationMs = 20000
         ),
         BlobSpec(
-            color = Color(0xFF8EA5BE),
+            color = Color(0xFF8AA4C8),
             size = 390.dp,
             alpha = 0.25f,
             startX = 200.dp,
@@ -678,9 +664,9 @@ private fun sunnyStyle() = BackgroundStyle(
             durationMs = 26000
         ),
         BlobSpec(
-            color = Color(0xFFFFE7A8),
+            color = Color(0xFFFFB766),
             size = 280.dp,
-            alpha = 0.2f,
+            alpha = 0.23f,
             startX = 220.dp,
             startY = (-120).dp,
             driftX = (-34).dp,

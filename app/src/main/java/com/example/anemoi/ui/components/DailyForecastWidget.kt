@@ -275,7 +275,7 @@ private fun TemperatureRangeTrack(
         val strokeWidth = max(2f, size.height * 0.65f)
         val baseGradient = Brush.horizontalGradient(
             colors = listOf(
-                Color(0xFF81D4FA).copy(alpha = 0.28f),
+                Color(0xFF6EC9F7).copy(alpha = 0.28f),
                 Color(0xFF0288D1).copy(alpha = 0.28f)
             ),
             startX = 0f,
@@ -283,7 +283,7 @@ private fun TemperatureRangeTrack(
         )
         val highlightGradient = Brush.horizontalGradient(
             colors = listOf(
-                Color(0xFF81D4FA),
+                Color(0xFF6EC9F7),
                 Color(0xFF0288D1)
             ),
             startX = 0f,
@@ -321,7 +321,7 @@ private fun TemperatureRangeTrack(
 private fun precipitationColor(percent: Int): Color {
     val fraction = (percent / 100f).coerceIn(0f, 1f)
     return lerp(
-        start = Color(0xFF81D4FA),
+        start = Color(0xFF6EC9F7),
         stop = Color(0xFF0288D1),
         fraction = fraction
     )
