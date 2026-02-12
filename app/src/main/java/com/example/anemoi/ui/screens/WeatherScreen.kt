@@ -40,6 +40,8 @@ import com.example.anemoi.ui.components.DynamicWeatherBackground
 import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
 import com.example.anemoi.ui.components.WeatherDisplay
+import com.example.anemoi.util.WeatherDatasetKind
+import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.util.backgroundOverridePresetAt
 import com.example.anemoi.util.backgroundOverrideTimeIso
 import com.example.anemoi.viewmodel.WeatherViewModel
@@ -205,10 +207,10 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
     val statusBarInsetTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val warningStaleServeWindowMs = 12 * 60 * 60 * 1000L
-    val warningCurrentThresholdMs = 5 * 60 * 1000L
-    val warningHourlyThresholdMs = 20 * 60 * 1000L
-    val warningDailyThresholdMs = 2 * 60 * 60 * 1000L
+    val warningStaleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
+    val warningCurrentThresholdMs = WeatherFreshnessConfig.CURRENT_THRESHOLD_MS
+    val warningHourlyThresholdMs = WeatherFreshnessConfig.HOURLY_THRESHOLD_MS
+    val warningDailyThresholdMs = WeatherFreshnessConfig.DAILY_THRESHOLD_MS
     val warningNow = System.currentTimeMillis()
     val warningKey = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
     val warningSignatureMismatch = warningKey != null &&
@@ -454,7 +456,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 if (pageLocation != null) {
                                     val key = "${pageLocation.lat},${pageLocation.lon}"
                                     val now = System.currentTimeMillis()
-                                    val grayThresholdMs = 60 * 60 * 1000L
 
                                     val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
                                     val rawWeather = uiState.weatherMap[key]
@@ -466,23 +467,113 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                     val hasHourly = rawWeather?.hourly != null
                                     val hasDaily = rawWeather?.daily != null
 
+                                    val currentThresholdMs = WeatherFreshnessConfig.thresholdMs(WeatherDatasetKind.CURRENT)
+                                    val hourlyThresholdMs = WeatherFreshnessConfig.thresholdMs(WeatherDatasetKind.HOURLY)
+                                    val dailyThresholdMs = WeatherFreshnessConfig.thresholdMs(WeatherDatasetKind.DAILY)
+                                    val currentThresholdLabel = WeatherFreshnessConfig.thresholdLabel(WeatherDatasetKind.CURRENT)
+                                    val hourlyThresholdLabel = WeatherFreshnessConfig.thresholdLabel(WeatherDatasetKind.HOURLY)
+                                    val dailyThresholdLabel = WeatherFreshnessConfig.thresholdLabel(WeatherDatasetKind.DAILY)
+                                    val staleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
+
                                     val weather = rawWeather
 
                                     val hasUnknownFreshness = (hasCurrent && currentUpdatedAt <= 0L) ||
                                         (hasHourly && hourlyUpdatedAt <= 0L) ||
                                         (hasDaily && dailyUpdatedAt <= 0L)
-                                    val useStaleColor = !isSignatureMatch || hasUnknownFreshness || listOfNotNull(
-                                        if (hasCurrent && currentUpdatedAt > 0L) now - currentUpdatedAt else null,
-                                        if (hasHourly && hourlyUpdatedAt > 0L) now - hourlyUpdatedAt else null,
-                                        if (hasDaily && dailyUpdatedAt > 0L) now - dailyUpdatedAt else null
-                                    ).any { it > grayThresholdMs }
+                                    val isCurrentExpired = hasCurrent && currentUpdatedAt > 0L &&
+                                        now - currentUpdatedAt > staleServeWindowMs
+                                    val isHourlyExpired = hasHourly && hourlyUpdatedAt > 0L &&
+                                        now - hourlyUpdatedAt > staleServeWindowMs
+                                    val isDailyExpired = hasDaily && dailyUpdatedAt > 0L &&
+                                        now - dailyUpdatedAt > staleServeWindowMs
+                                    val isCurrentAged = hasCurrent && currentUpdatedAt > 0L &&
+                                        now - currentUpdatedAt > currentThresholdMs
+                                    val isHourlyAged = hasHourly && hourlyUpdatedAt > 0L &&
+                                        now - hourlyUpdatedAt > hourlyThresholdMs
+                                    val isDailyAged = hasDaily && dailyUpdatedAt > 0L &&
+                                        now - dailyUpdatedAt > dailyThresholdMs
+                                    val staleHintText = when {
+                                        !isSignatureMatch -> "Refreshing after settings change"
+                                        hasUnknownFreshness -> "Refreshing cached weather"
+                                        isCurrentExpired || isHourlyExpired || isDailyExpired -> "Refreshing expired weather cache"
+                                        isCurrentAged -> "Updating current conditions"
+                                        isHourlyAged -> "Updating hourly forecast"
+                                        isDailyAged -> "Updating daily forecast"
+                                        else -> null
+                                    }
+                                    val staleDetailsLines = if (staleHintText != null) {
+                                        fun datasetStatus(
+                                            hasData: Boolean,
+                                            updatedAt: Long,
+                                            label: String,
+                                            thresholdMs: Long,
+                                            thresholdLabel: String
+                                        ): String {
+                                            if (!hasData) return "$label: missing"
+                                            if (updatedAt <= 0L) return "$label: timestamp unavailable"
+                                            val ageMs = (now - updatedAt).coerceAtLeast(0L)
+                                            val ageText = formatOverlayAge(now, updatedAt)
+                                            return if (ageMs > staleServeWindowMs) {
+                                                "$label: $ageText old (expired past ${WeatherFreshnessConfig.STALE_WINDOW_SUMMARY} fallback window)"
+                                            } else if (ageMs > thresholdMs) {
+                                                "$label: $ageText old (past ${thresholdLabel} refresh threshold)"
+                                            } else {
+                                                "$label: $ageText old (within ${thresholdLabel} refresh threshold)"
+                                            }
+                                        }
+
+                                        buildList {
+                                            add("Location: ${pageLocation.name}")
+                                            add("Status: $staleHintText")
+                                            add(
+                                                if (isSignatureMatch) {
+                                                    "Request signature: matches current settings"
+                                                } else {
+                                                    "Request signature: mismatch (showing older-mode cache)"
+                                                }
+                                            )
+                                            add(
+                                                datasetStatus(
+                                                    hasData = hasCurrent,
+                                                    updatedAt = currentUpdatedAt,
+                                                    label = "Current",
+                                                    thresholdMs = currentThresholdMs,
+                                                    thresholdLabel = currentThresholdLabel
+                                                )
+                                            )
+                                            add(
+                                                datasetStatus(
+                                                    hasData = hasHourly,
+                                                    updatedAt = hourlyUpdatedAt,
+                                                    label = "Hourly",
+                                                    thresholdMs = hourlyThresholdMs,
+                                                    thresholdLabel = hourlyThresholdLabel
+                                                )
+                                            )
+                                            add(
+                                                datasetStatus(
+                                                    hasData = hasDaily,
+                                                    updatedAt = dailyUpdatedAt,
+                                                    label = "Daily",
+                                                    thresholdMs = dailyThresholdMs,
+                                                    thresholdLabel = dailyThresholdLabel
+                                                )
+                                            )
+                                            add("Refresh thresholds: ${WeatherFreshnessConfig.THRESHOLD_SUMMARY}")
+                                            add("Stale fallback window: ${WeatherFreshnessConfig.STALE_WINDOW_SUMMARY}")
+                                        }
+                                    } else {
+                                        emptyList()
+                                    }
 
                                     WeatherDisplay(
                                         weather = weather,
                                         tempUnit = uiState.tempUnit,
                                         showDashesOverride = page == 0 && !uiState.locationFound,
                                         textAlpha = textAlpha,
-                                        useStaleColor = useStaleColor
+                                        staleHintText = staleHintText,
+                                        staleDetailsTitle = "Weather Refresh Status",
+                                        staleDetailsLines = staleDetailsLines
                                     )
                                 } else {
                                     WeatherDisplay(

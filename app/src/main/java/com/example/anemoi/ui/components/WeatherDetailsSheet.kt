@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.viewmodel.WeatherUiState
 import java.util.Calendar
 
@@ -56,7 +57,7 @@ fun WeatherDetailsSheet(
         val handleSurfaceShape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
         val selectedLoc = uiState.selectedLocation
         val key = selectedLoc?.let { "${it.lat},${it.lon}" }
-        val staleServeWindowMs = 12 * 60 * 60 * 1000L
+        val staleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
 
         val rawWeather = key?.let { uiState.weatherMap[it] }
         val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L

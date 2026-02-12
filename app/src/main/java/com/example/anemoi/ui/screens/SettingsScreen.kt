@@ -40,6 +40,7 @@ import com.example.anemoi.data.WindUnit
 import com.example.anemoi.ui.components.GlassEntryCard
 import com.example.anemoi.ui.components.SegmentedSelector
 import com.example.anemoi.util.ObfuscationMode
+import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.viewmodel.WeatherViewModel
 import kotlin.math.roundToInt
@@ -71,10 +72,10 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
         uncheckedTrackColor = Color.Transparent,
         uncheckedBorderColor = Color(0xFF8C8C8C)
     )
-    val staleServeWindowMs = 12 * 60 * 60 * 1000L
-    val currentThresholdMs = 5 * 60 * 1000L
-    val hourlyThresholdMs = 20 * 60 * 1000L
-    val dailyThresholdMs = 2 * 60 * 60 * 1000L
+    val staleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
+    val currentThresholdMs = WeatherFreshnessConfig.CURRENT_THRESHOLD_MS
+    val hourlyThresholdMs = WeatherFreshnessConfig.HOURLY_THRESHOLD_MS
+    val dailyThresholdMs = WeatherFreshnessConfig.DAILY_THRESHOLD_MS
     val now = System.currentTimeMillis()
     val key = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
     val isSignatureMatch = key != null && uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
@@ -382,7 +383,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
 
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Grey weather text means stale or old-mode data is shown while a refresh is pending.",
+                                text = "A subtle status line under H/L appears when cached weather is stale or mode-mismatched. Tap it for refresh details.",
                                 color = Color.White.copy(alpha = 0.78f),
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp

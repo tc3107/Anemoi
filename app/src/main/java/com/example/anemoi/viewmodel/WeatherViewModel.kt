@@ -32,6 +32,7 @@ import com.example.anemoi.data.WeatherResponse
 import com.example.anemoi.data.WindUnit
 import com.example.anemoi.util.ObfuscationMode
 import com.example.anemoi.util.CoordinateInputParser
+import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.util.backgroundOverridePresets
 import com.example.anemoi.util.dataStore
 import com.example.anemoi.util.obfuscateLocation
@@ -260,10 +261,10 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private val whitespaceRegex = Regex("\\s+")
 
-    private val currentFreshnessMs = 5 * 60 * 1000L
-    private val hourlyFreshnessMs = 20 * 60 * 1000L
-    private val dailyFreshnessMs = 2 * 60 * 60 * 1000L
-    private val staleServeWindowMs = 12 * 60 * 60 * 1000L
+    private val currentFreshnessMs = WeatherFreshnessConfig.CURRENT_THRESHOLD_MS
+    private val hourlyFreshnessMs = WeatherFreshnessConfig.HOURLY_THRESHOLD_MS
+    private val dailyFreshnessMs = WeatherFreshnessConfig.DAILY_THRESHOLD_MS
+    private val staleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
     private val staleCheckIntervalMs = 15 * 1000L
     private val backgroundRefreshIntervalMs = 60 * 60 * 1000L
     private val perLocationGateBypassDistanceKm = 15.0
@@ -285,7 +286,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
-    private val staleDataError = "Weather cache is missing or older than 12 hours"
+    private val staleDataError =
+        "Weather cache is missing or older than ${WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS / (60 * 60 * 1000L)} hours"
 
     private val defaultLocation = LocationItem(
         name = "New York",
