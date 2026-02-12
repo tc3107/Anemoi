@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -296,7 +297,9 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         _uiState.update { state ->
             state.copy(activeRequestSignature = buildRequestSignature(state))
         }
-        loadSettings()
+        runBlocking {
+            loadSettings()
+        }
         startAutoUpdate()
         startStalenessCheck()
     }
@@ -329,102 +332,100 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
     }
 
-    private fun loadSettings() {
-        viewModelScope.launch {
-            val prefs = applicationContext.dataStore.data.firstOrNull()
-            if (prefs == null) {
-                addLog("Preferences unavailable, defaulting to New York")
-                lastLocation = defaultLocation
-                _uiState.update { it.copy(selectedLocation = defaultLocation) }
-                saveLastLocation(defaultLocation)
-                prefetchWeatherOnStartup(listOf(defaultLocation))
-                return@launch
-            }
-
-            val favs = prefs[favoritesKey]?.let {
-                try {
-                    json.decodeFromString<List<LocationItem>>(it)
-                } catch (_: Exception) {
-                    emptyList()
-                }
-            } ?: emptyList()
-
-            val searched = prefs[searchedLocationKey]?.let {
-                try {
-                    json.decodeFromString<LocationItem>(it)
-                } catch (_: Exception) {
-                    null
-                }
-            }
-
-            val live = prefs[liveLocationKey]?.let {
-                try {
-                    json.decodeFromString<LocationItem>(it)
-                } catch (_: Exception) {
-                    null
-                }
-            }
-
-            _uiState.update { state ->
-                state.copy(
-                    favorites = favs,
-                    searchedLocation = searched,
-                    lastLiveLocation = live,
-                    isFollowMode = prefs[followModeKey] ?: false,
-                    isDebugOptionsVisible = prefs[debugOptionsVisibleKey] ?: false,
-                    isPerformanceOverlayEnabled = prefs[performanceOverlayEnabledKey]
-                        ?: prefs[aPerformanceOverlayEnabledLegacyKey]
-                        ?: false,
-                    isBackgroundOverrideEnabled = prefs[backgroundOverrideEnabledKey] ?: false,
-                    backgroundOverridePresetIndex = (prefs[backgroundOverridePresetIndexKey] ?: 0)
-                        .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
-                    backgroundOverrideWindSpeedKmh = (prefs[backgroundOverrideWindSpeedKmhKey] ?: 0f)
-                        .coerceIn(0f, 100f),
-                    tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
-                    pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
-                    windUnit = prefs[windUnitKey]?.let { WindUnit.valueOf(it) } ?: WindUnit.KMH,
-                    customValuesEnabled = prefs[customValuesKey] ?: false,
-                    textAlpha = prefs[textAlphaKey] ?: 0.8f,
-                    sheetBlurStrength = prefs[sheetBlurKey] ?: 16f,
-                    sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
-                    searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
-                    obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
-                    gridKm = prefs[gridKmKey] ?: 5.0f
-                )
-            }
-            refreshActiveRequestSignature()
-
-            loadPersistedCaches(prefs)
-
-            if (_uiState.value.isFollowMode) {
-                startFollowMode(applicationContext)
-            }
-
-            prefs[lastLocationKey]?.let { jsonStr ->
-                try {
-                    val location = json.decodeFromString<LocationItem>(jsonStr)
-                    lastLocation = location
-                    _uiState.update { it.copy(selectedLocation = location) }
-                } catch (e: Exception) {
-                    addLog("Load failed: ${e.message}")
-                }
-            }
-
-            if (_uiState.value.selectedLocation == null) {
-                addLog("No saved location found, defaulting to New York")
-                lastLocation = defaultLocation
-                _uiState.update { it.copy(selectedLocation = defaultLocation) }
-                saveLastLocation(defaultLocation)
-            }
-
-            val startupLocations = buildList {
-                addAll(favs)
-                searched?.let { add(it) }
-                live?.let { add(it) }
-                _uiState.value.selectedLocation?.let { add(it) }
-            }
-            prefetchWeatherOnStartup(startupLocations)
+    private suspend fun loadSettings() {
+        val prefs = applicationContext.dataStore.data.firstOrNull()
+        if (prefs == null) {
+            addLog("Preferences unavailable, defaulting to New York")
+            lastLocation = defaultLocation
+            _uiState.update { it.copy(selectedLocation = defaultLocation) }
+            saveLastLocation(defaultLocation)
+            prefetchWeatherOnStartup(listOf(defaultLocation))
+            return
         }
+
+        val favs = prefs[favoritesKey]?.let {
+            try {
+                json.decodeFromString<List<LocationItem>>(it)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } ?: emptyList()
+
+        val searched = prefs[searchedLocationKey]?.let {
+            try {
+                json.decodeFromString<LocationItem>(it)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        val live = prefs[liveLocationKey]?.let {
+            try {
+                json.decodeFromString<LocationItem>(it)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                favorites = favs,
+                searchedLocation = searched,
+                lastLiveLocation = live,
+                isFollowMode = prefs[followModeKey] ?: false,
+                isDebugOptionsVisible = prefs[debugOptionsVisibleKey] ?: false,
+                isPerformanceOverlayEnabled = prefs[performanceOverlayEnabledKey]
+                    ?: prefs[aPerformanceOverlayEnabledLegacyKey]
+                    ?: false,
+                isBackgroundOverrideEnabled = prefs[backgroundOverrideEnabledKey] ?: false,
+                backgroundOverridePresetIndex = (prefs[backgroundOverridePresetIndexKey] ?: 0)
+                    .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
+                backgroundOverrideWindSpeedKmh = (prefs[backgroundOverrideWindSpeedKmhKey] ?: 0f)
+                    .coerceIn(0f, 100f),
+                tempUnit = prefs[tempUnitKey]?.let { TempUnit.valueOf(it) } ?: TempUnit.CELSIUS,
+                pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
+                windUnit = prefs[windUnitKey]?.let { WindUnit.valueOf(it) } ?: WindUnit.KMH,
+                customValuesEnabled = prefs[customValuesKey] ?: false,
+                textAlpha = prefs[textAlphaKey] ?: 0.8f,
+                sheetBlurStrength = prefs[sheetBlurKey] ?: 16f,
+                sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
+                searchBarTintAlpha = prefs[searchBarTintKey] ?: 0.15f,
+                obfuscationMode = prefs[obfuscationModeKey]?.let { ObfuscationMode.valueOf(it) } ?: ObfuscationMode.PRECISE,
+                gridKm = prefs[gridKmKey] ?: 5.0f
+            )
+        }
+        refreshActiveRequestSignature()
+
+        loadPersistedCaches(prefs)
+
+        if (_uiState.value.isFollowMode) {
+            startFollowMode(applicationContext)
+        }
+
+        prefs[lastLocationKey]?.let { jsonStr ->
+            try {
+                val location = json.decodeFromString<LocationItem>(jsonStr)
+                lastLocation = location
+                _uiState.update { it.copy(selectedLocation = location) }
+            } catch (e: Exception) {
+                addLog("Load failed: ${e.message}")
+            }
+        }
+
+        if (_uiState.value.selectedLocation == null) {
+            addLog("No saved location found, defaulting to New York")
+            lastLocation = defaultLocation
+            _uiState.update { it.copy(selectedLocation = defaultLocation) }
+            saveLastLocation(defaultLocation)
+        }
+
+        val startupLocations = buildList {
+            addAll(favs)
+            searched?.let { add(it) }
+            live?.let { add(it) }
+            _uiState.value.selectedLocation?.let { add(it) }
+        }
+        prefetchWeatherOnStartup(startupLocations)
     }
 
     private fun loadPersistedCaches(prefs: Preferences) {
@@ -487,7 +488,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 }
             }
 
-            pruneExpiredWeatherEntries(now)
             addLog("Restored persisted cache state")
         } catch (e: Exception) {
             addLog("Failed to restore persisted cache: ${e.message}")
@@ -656,8 +656,18 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val state = _uiState.value
         if (state.weatherMap.isEmpty()) return
 
+        val retainedKeys = mutableSetOf<String>()
+        fun retain(location: LocationItem?) {
+            if (location == null) return
+            retainedKeys += locationKey(location)
+        }
+        retain(state.selectedLocation)
+        retain(state.searchedLocation)
+        retain(state.lastLiveLocation)
+        state.favorites.forEach(::retain)
+
         val keysToRemove = state.weatherMap.keys.filter { key ->
-            !hasAnyUsableData(key, now)
+            key !in retainedKeys && !hasAnyUsableData(key, now)
         }.toSet()
 
         if (keysToRemove.isEmpty()) return

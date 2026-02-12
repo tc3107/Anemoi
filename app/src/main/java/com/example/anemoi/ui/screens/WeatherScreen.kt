@@ -240,15 +240,30 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             staleServeWindowMs = warningStaleServeWindowMs
         )
 
+    fun locationKey(location: LocationItem?): String? = location?.let { "${it.lat},${it.lon}" }
+
     fun locationForPage(page: Int): LocationItem? {
         return when {
-            page == 0 -> if (uiState.isFollowMode) uiState.selectedLocation else null
+            page == 0 -> {
+                if (uiState.isFollowMode) {
+                    uiState.selectedLocation
+                } else {
+                    val selected = uiState.selectedLocation
+                    if (
+                        selected != null &&
+                        favorites.none { locationKey(it) == locationKey(selected) } &&
+                        locationKey(searchedLocation) != locationKey(selected)
+                    ) {
+                        selected
+                    } else {
+                        null
+                    }
+                }
+            }
             page <= favorites.size -> favorites.getOrNull(page - 1)
             else -> searchedLocation
         }
     }
-
-    fun locationKey(location: LocationItem?): String? = location?.let { "${it.lat},${it.lon}" }
 
     val isPagerSwitchInProgress =
         pagerState.isScrollInProgress || pagerState.currentPage != pagerState.settledPage
@@ -274,16 +289,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val backgroundPageKey = settledLocationKey ?: "page:${pagerState.settledPage}"
     val backgroundKey = settledLocationKey
     val backgroundRawWeather = backgroundKey?.let { uiState.weatherMap[it] }
-    val backgroundCurrentUpdatedAt = backgroundKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
-    val backgroundCurrentWeather = if (
-        backgroundRawWeather?.currentWeather != null &&
-        backgroundCurrentUpdatedAt > 0L &&
-        warningNow - backgroundCurrentUpdatedAt <= warningStaleServeWindowMs
-    ) {
-        backgroundRawWeather.currentWeather
-    } else {
-        null
-    }
+    val backgroundCurrentWeather = backgroundRawWeather?.currentWeather
     val realWindSpeedKmh = backgroundCurrentWeather?.windSpeed ?: 0.0
     val backgroundWindSpeedKmh = if (uiState.isBackgroundOverrideEnabled) {
         uiState.backgroundOverrideWindSpeedKmh.toDouble()
@@ -448,7 +454,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 if (pageLocation != null) {
                                     val key = "${pageLocation.lat},${pageLocation.lon}"
                                     val now = System.currentTimeMillis()
-                                    val staleServeWindowMs = 12 * 60 * 60 * 1000L
                                     val grayThresholdMs = 60 * 60 * 1000L
 
                                     val isSignatureMatch = uiState.cacheSignatureMap[key] == uiState.activeRequestSignature
@@ -457,26 +462,19 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                     val hourlyUpdatedAt = uiState.hourlyUpdateTimeMap[key] ?: 0L
                                     val dailyUpdatedAt = uiState.dailyUpdateTimeMap[key] ?: 0L
 
-                                    val currentUsable = rawWeather?.currentWeather != null &&
-                                        currentUpdatedAt > 0L &&
-                                        now - currentUpdatedAt <= staleServeWindowMs
-                                    val hourlyUsable = rawWeather?.hourly != null &&
-                                        hourlyUpdatedAt > 0L &&
-                                        now - hourlyUpdatedAt <= staleServeWindowMs
-                                    val dailyUsable = rawWeather?.daily != null &&
-                                        dailyUpdatedAt > 0L &&
-                                        now - dailyUpdatedAt <= staleServeWindowMs
+                                    val hasCurrent = rawWeather?.currentWeather != null
+                                    val hasHourly = rawWeather?.hourly != null
+                                    val hasDaily = rawWeather?.daily != null
 
-                                    val weather = rawWeather?.copy(
-                                        currentWeather = if (currentUsable) rawWeather.currentWeather else null,
-                                        hourly = if (hourlyUsable) rawWeather.hourly else null,
-                                        daily = if (dailyUsable) rawWeather.daily else null
-                                    )
+                                    val weather = rawWeather
 
-                                    val useStaleColor = !isSignatureMatch || listOfNotNull(
-                                        if (currentUsable) now - currentUpdatedAt else null,
-                                        if (hourlyUsable) now - hourlyUpdatedAt else null,
-                                        if (dailyUsable) now - dailyUpdatedAt else null
+                                    val hasUnknownFreshness = (hasCurrent && currentUpdatedAt <= 0L) ||
+                                        (hasHourly && hourlyUpdatedAt <= 0L) ||
+                                        (hasDaily && dailyUpdatedAt <= 0L)
+                                    val useStaleColor = !isSignatureMatch || hasUnknownFreshness || listOfNotNull(
+                                        if (hasCurrent && currentUpdatedAt > 0L) now - currentUpdatedAt else null,
+                                        if (hasHourly && hourlyUpdatedAt > 0L) now - hourlyUpdatedAt else null,
+                                        if (hasDaily && dailyUpdatedAt > 0L) now - dailyUpdatedAt else null
                                     ).any { it > grayThresholdMs }
 
                                     WeatherDisplay(
