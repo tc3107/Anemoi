@@ -37,10 +37,12 @@ import com.example.anemoi.ui.components.GlassEntryCard
 @Composable
 fun OrganizerOverlay(
     favorites: List<LocationItem>,
+    recentLocation: LocationItem?,
     onReorder: (Int, Int) -> Unit,
     onToggleFavorite: (LocationItem) -> Unit,
     onRenameLocation: (LocationItem, String?) -> Unit,
     onSelectCurrentLocation: () -> Unit,
+    onSelectRecentLocation: (LocationItem) -> Unit,
     onSelect: (LocationItem) -> Unit,
     onClose: () -> Unit
 ) {
@@ -261,6 +263,35 @@ fun OrganizerOverlay(
                                 }
                             }
                         }
+                    }
+                }
+
+                if (recentLocation != null) {
+                    HorizontalDivider(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .align(Alignment.CenterHorizontally)
+                            .padding(vertical = 16.dp),
+                        color = Color.White.copy(alpha = 0.24f)
+                    )
+
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = draggingIndex == null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSelectRecentLocation(recentLocation)
+                            }
+                    ) {
+                        Text(
+                            text = "Recent: ${recentLocation.displayName}",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 

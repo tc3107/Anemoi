@@ -109,6 +109,14 @@ fun SearchBar(
     val shouldShowDropdown = isFocused && expanded && query.isNotEmpty() && suggestions.isNotEmpty()
     val shouldShowStatusMessage =
         isFocused && expanded && query.isNotEmpty() && !searchStatusMessage.isNullOrBlank()
+    val isSelectedLocationFavorite = selectedLocation?.let { selected ->
+        favorites.any { favorite -> favorite.lat == selected.lat && favorite.lon == selected.lon }
+    } ?: false
+    val selectedLocationLabel = when {
+        isFollowMode -> "Current Location"
+        selectedLocation != null && !isSelectedLocationFavorite -> "Recent: ${selectedLocation.displayName}"
+        else -> selectedLocation?.displayName ?: "Search location..."
+    }
     val dividerHeight = 1.dp
     val suggestionRowHeight = 56.dp
     val maxDropdownHeight = 300.dp
@@ -228,7 +236,7 @@ fun SearchBar(
                         ) {
                             if (query.isEmpty()) {
                                 Text(
-                                    text = if (isFollowMode) "Current Location" else (selectedLocation?.displayName ?: "Search location..."),
+                                    text = selectedLocationLabel,
                                     color = Color.White.copy(alpha = 0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,

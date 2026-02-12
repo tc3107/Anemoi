@@ -266,6 +266,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         else ->
             uiState.selectedLocation
     }
+    val organizerRecentLocation = uiState.searchedLocation?.takeIf { searched ->
+        favorites.none { favorite -> favorite.lat == searched.lat && favorite.lon == searched.lon }
+    }
     val overrideBackgroundPreset = backgroundOverridePresetAt(uiState.backgroundOverridePresetIndex)
     val overrideBackgroundTimeIso = backgroundOverrideTimeIso(overrideBackgroundPreset.hourOfDay)
     val backgroundPageKey = settledLocationKey ?: "page:${pagerState.settledPage}"
@@ -541,11 +544,19 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         ) {
             OrganizerOverlay(
                 favorites = favorites,
+                recentLocation = organizerRecentLocation,
                 onReorder = viewModel::reorderFavorites,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onRenameLocation = viewModel::renameLocationDisplayName,
                 onSelectCurrentLocation = {
                     viewModel.setFollowMode(true, context)
+                    viewModel.toggleOrganizerMode(false)
+                },
+                onSelectRecentLocation = { location ->
+                    if (uiState.isFollowMode) {
+                        viewModel.setFollowMode(false, context)
+                    }
+                    viewModel.onLocationSelected(location)
                     viewModel.toggleOrganizerMode(false)
                 },
                 onSelect = { location ->
