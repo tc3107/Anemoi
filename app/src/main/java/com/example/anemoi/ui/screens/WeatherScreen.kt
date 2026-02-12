@@ -434,7 +434,11 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                     }
                                 }
                             )
-                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // WeatherDetailsSheet contributes +8.dp (header footer) and +20.dp (item spacing)
+                            // below this header block. Keep the temperature block vertically centered
+                            // between search bar and first widget by balancing total top/bottom gaps.
+                            Spacer(modifier = Modifier.height(28.dp))
 
                             HorizontalPager(
                                 state = pagerState,
@@ -493,7 +497,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(72.dp))
                         }
                     },
                     modifier = Modifier.fillMaxSize()

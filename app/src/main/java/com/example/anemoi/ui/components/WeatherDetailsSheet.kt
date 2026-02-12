@@ -7,8 +7,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -41,10 +41,10 @@ fun WeatherDetailsSheet(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val detailsListState = rememberLazyListState()
+    val detailsScrollState = rememberScrollState()
     if (resetScrollKey != null) {
         LaunchedEffect(resetScrollKey) {
-            detailsListState.scrollToItem(0)
+            detailsScrollState.scrollTo(0)
         }
     }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -156,230 +156,212 @@ fun WeatherDetailsSheet(
             }
             
             CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(
+                            state = detailsScrollState,
+                            enabled = isExpanded || !showHandle
+                        )
                         .padding(horizontal = horizontalPadding),
-                    state = detailsListState,
-                    userScrollEnabled = isExpanded || !showHandle,
                     verticalArrangement = Arrangement.spacedBy(widgetGap)
                 ) {
-                    item {
-                        Spacer(modifier = Modifier.height(if (showHandle) widgetGap else 0.dp))
-                    }
+                    Spacer(modifier = Modifier.height(if (showHandle) widgetGap else 0.dp))
 
                     if (headerContent != null) {
-                        item {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                headerContent()
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            headerContent()
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
 
-                    item {
-                        DetailWidgetContainer(
-                            label = "TEMPERATURE",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(squareSize),
-                            contentTopGap = 0.dp
-                        ) { widgetTopToGraphInset ->
-                            TemperatureGraph(
-                                times = weather?.hourly?.time ?: emptyList(),
-                                temperatures = weather?.hourly?.temperatures ?: emptyList(),
-                                currentTemp = weather?.currentWeather?.temperature,
-                                currentTimeIso = weather?.currentWeather?.time,
-                                tempUnit = uiState.tempUnit,
-                                widgetTopToGraphTopInset = widgetTopToGraphInset,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                    item {
-                        DetailWidgetContainer(
-                            label = "PRECIPITATION",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(squareSize),
-                            contentTopGap = 0.dp
-                        ) { widgetTopToGraphInset ->
-                            PrecipitationGraph(
-                                times = weather?.hourly?.time ?: emptyList(),
-                                probabilities = weather?.hourly?.precipitationProbability ?: emptyList(),
-                                precipitations = weather?.hourly?.precipitation ?: emptyList(),
-                                currentTimeIso = weather?.currentWeather?.time,
-                                widgetTopToGraphTopInset = widgetTopToGraphInset,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-                    item {
-                        DailyForecastWidget(
-                            dates = weather?.daily?.time ?: emptyList(),
-                            weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
-                            minTemperatures = weather?.daily?.minTemp ?: emptyList(),
-                            maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
-                            precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
-                            tempUnit = uiState.tempUnit,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    item {
-                        HourlyForecastWidget(
+                    DetailWidgetContainer(
+                        label = "TEMPERATURE",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 0.dp
+                    ) { widgetTopToGraphInset ->
+                        TemperatureGraph(
                             times = weather?.hourly?.time ?: emptyList(),
-                            weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
                             temperatures = weather?.hourly?.temperatures ?: emptyList(),
+                            currentTemp = weather?.currentWeather?.temperature,
                             currentTimeIso = weather?.currentWeather?.time,
                             tempUnit = uiState.tempUnit,
-                            isExpanded = isExpanded,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(squareSize)
+                            widgetTopToGraphTopInset = widgetTopToGraphInset,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(widgetGap)
-                        ) {
-                            DetailWidgetContainer(
-                                label = "UV INDEX",
-                                modifier = Modifier.size(squareSize),
-                                contentTopGap = 8.dp
-                            ) { _ ->
-                                val currentTimeStr = weather?.currentWeather?.time ?: ""
-                                val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
-                                val currentUV = if (currentHourIdx != -1 && weather?.hourly?.uvIndex != null && currentHourIdx < weather.hourly.uvIndex.size) {
-                                    weather.hourly.uvIndex[currentHourIdx]
-                                } else null
+                    DetailWidgetContainer(
+                        label = "PRECIPITATION",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 0.dp
+                    ) { widgetTopToGraphInset ->
+                        PrecipitationGraph(
+                            times = weather?.hourly?.time ?: emptyList(),
+                            probabilities = weather?.hourly?.precipitationProbability ?: emptyList(),
+                            precipitations = weather?.hourly?.precipitation ?: emptyList(),
+                            currentTimeIso = weather?.currentWeather?.time,
+                            widgetTopToGraphTopInset = widgetTopToGraphInset,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    DailyForecastWidget(
+                        dates = weather?.daily?.time ?: emptyList(),
+                        weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
+                        minTemperatures = weather?.daily?.minTemp ?: emptyList(),
+                        maxTemperatures = weather?.daily?.maxTemp ?: emptyList(),
+                        precipitationProbabilityMax = weather?.daily?.precipitationProbabilityMax ?: emptyList(),
+                        tempUnit = uiState.tempUnit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    HourlyForecastWidget(
+                        times = weather?.hourly?.time ?: emptyList(),
+                        weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
+                        temperatures = weather?.hourly?.temperatures ?: emptyList(),
+                        currentTimeIso = weather?.currentWeather?.time,
+                        tempUnit = uiState.tempUnit,
+                        isExpanded = isExpanded,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(widgetGap)
+                    ) {
+                        DetailWidgetContainer(
+                            label = "UV INDEX",
+                            modifier = Modifier.size(squareSize),
+                            contentTopGap = 8.dp
+                        ) { _ ->
+                            val currentTimeStr = weather?.currentWeather?.time ?: ""
+                            val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
+                            val currentUV = if (currentHourIdx != -1 && weather?.hourly?.uvIndex != null && currentHourIdx < weather.hourly.uvIndex.size) {
+                                weather.hourly.uvIndex[currentHourIdx]
+                            } else null
 
-                                UVIndexWidget(
-                                    currentUV = currentUV,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                            UVIndexWidget(
+                                currentUV = currentUV,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        DetailWidgetContainer(
+                            label = "PRESSURE",
+                            modifier = Modifier.size(squareSize),
+                            contentTopGap = 8.dp
+                        ) { _ ->
+                            val hourlyPressures = weather?.hourly?.pressures ?: emptyList()
+                            val currentTimeStr = weather?.currentWeather?.time ?: ""
+                            val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
+
+                            val currentPressure = if (currentHourIdx != -1 && currentHourIdx < hourlyPressures.size) {
+                                hourlyPressures[currentHourIdx]
+                            } else {
+                                null
                             }
 
-                            DetailWidgetContainer(
-                                label = "PRESSURE",
-                                modifier = Modifier.size(squareSize),
-                                contentTopGap = 8.dp
-                            ) { _ ->
-                                val hourlyPressures = weather?.hourly?.pressures ?: emptyList()
-                                val currentTimeStr = weather?.currentWeather?.time ?: ""
-                                val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
+                            val minP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).minOrNull() else null
+                            val maxP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).maxOrNull() else null
 
-                                val currentPressure = if (currentHourIdx != -1 && currentHourIdx < hourlyPressures.size) {
-                                    hourlyPressures[currentHourIdx]
-                                } else {
-                                    null
-                                }
+                            val trend = if (currentHourIdx != -1 && currentHourIdx + 3 < hourlyPressures.size) {
+                                hourlyPressures[currentHourIdx + 3] - hourlyPressures[currentHourIdx]
+                            } else null
 
-                                val minP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).minOrNull() else null
-                                val maxP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).maxOrNull() else null
-
-                                val trend = if (currentHourIdx != -1 && currentHourIdx + 3 < hourlyPressures.size) {
-                                    hourlyPressures[currentHourIdx + 3] - hourlyPressures[currentHourIdx]
-                                } else null
-
-                                PressureDial(
-                                    currentPressure = currentPressure,
-                                    minPressure = minP,
-                                    maxPressure = maxP,
-                                    trend = trend,
-                                    unit = uiState.pressureUnit,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                            PressureDial(
+                                currentPressure = currentPressure,
+                                minPressure = minP,
+                                maxPressure = maxP,
+                                trend = trend,
+                                unit = uiState.pressureUnit,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
-                    item {
-                        DetailWidgetContainer(
-                            label = "WIND",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(squareSize),
-                            contentTopGap = 4.dp
-                        ) { _ ->
-                            val currentTimeIso = weather?.currentWeather?.time
-                            val currentHourPrefix = currentTimeIso?.substringBefore(":")
-                            val currentHourIdx = if (!currentHourPrefix.isNullOrEmpty()) {
-                                weather?.hourly?.time?.indexOfFirst {
-                                    it.startsWith(currentHourPrefix)
-                                } ?: -1
-                            } else {
-                                -1
-                            }
+                    DetailWidgetContainer(
+                        label = "WIND",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 4.dp
+                    ) { _ ->
+                        val currentTimeIso = weather?.currentWeather?.time
+                        val currentHourPrefix = currentTimeIso?.substringBefore(":")
+                        val currentHourIdx = if (!currentHourPrefix.isNullOrEmpty()) {
+                            weather?.hourly?.time?.indexOfFirst {
+                                it.startsWith(currentHourPrefix)
+                            } ?: -1
+                        } else {
+                            -1
+                        }
 
-                            val hourlyWindSpeeds = weather?.hourly?.windSpeeds ?: emptyList()
-                            val hourlyWindDirections = weather?.hourly?.windDirections ?: emptyList()
-                            val hourlyWindGusts = weather?.hourly?.windGusts ?: emptyList()
+                        val hourlyWindSpeeds = weather?.hourly?.windSpeeds ?: emptyList()
+                        val hourlyWindDirections = weather?.hourly?.windDirections ?: emptyList()
+                        val hourlyWindGusts = weather?.hourly?.windGusts ?: emptyList()
 
-                            val fallbackWindSpeed = if (currentHourIdx != -1 && currentHourIdx < hourlyWindSpeeds.size) {
-                                hourlyWindSpeeds[currentHourIdx]
-                            } else {
-                                null
-                            }
+                        val fallbackWindSpeed = if (currentHourIdx != -1 && currentHourIdx < hourlyWindSpeeds.size) {
+                            hourlyWindSpeeds[currentHourIdx]
+                        } else {
+                            null
+                        }
 
-                            val fallbackWindDirection = if (currentHourIdx != -1 && currentHourIdx < hourlyWindDirections.size) {
-                                hourlyWindDirections[currentHourIdx]
-                            } else {
-                                null
-                            }
+                        val fallbackWindDirection = if (currentHourIdx != -1 && currentHourIdx < hourlyWindDirections.size) {
+                            hourlyWindDirections[currentHourIdx]
+                        } else {
+                            null
+                        }
 
-                            val currentGust = if (currentHourIdx != -1 && currentHourIdx < hourlyWindGusts.size) {
-                                hourlyWindGusts[currentHourIdx]
-                            } else {
-                                null
-                            }
+                        val currentGust = if (currentHourIdx != -1 && currentHourIdx < hourlyWindGusts.size) {
+                            hourlyWindGusts[currentHourIdx]
+                        } else {
+                            null
+                        }
 
-                            val todayPrefix = currentTimeIso?.substringBefore("T")
-                                ?: weather?.hourly?.time?.firstOrNull()?.substringBefore("T")
+                        val todayPrefix = currentTimeIso?.substringBefore("T")
+                            ?: weather?.hourly?.time?.firstOrNull()?.substringBefore("T")
 
-                            val maxGustToday = if (!todayPrefix.isNullOrEmpty() && hourlyWindGusts.isNotEmpty()) {
-                                weather?.hourly?.time
-                                    ?.mapIndexedNotNull { index, iso ->
-                                        if (index < hourlyWindGusts.size && iso.startsWith(todayPrefix)) {
-                                            hourlyWindGusts[index]
-                                        } else {
-                                            null
-                                        }
+                        val maxGustToday = if (!todayPrefix.isNullOrEmpty() && hourlyWindGusts.isNotEmpty()) {
+                            weather?.hourly?.time
+                                ?.mapIndexedNotNull { index, iso ->
+                                    if (index < hourlyWindGusts.size && iso.startsWith(todayPrefix)) {
+                                        hourlyWindGusts[index]
+                                    } else {
+                                        null
                                     }
-                                    ?.maxOrNull()
-                            } else {
-                                null
-                            }
+                                }
+                                ?.maxOrNull()
+                        } else {
+                            null
+                        }
 
-                            WindCompassWidget(
-                                windSpeedKmh = weather?.currentWeather?.windSpeed ?: fallbackWindSpeed,
-                                windDirectionDegrees = weather?.currentWeather?.windDirection ?: fallbackWindDirection,
-                                gustSpeedKmh = currentGust,
-                                maxGustKmh = maxGustToday,
-                                unit = uiState.windUnit,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        WindCompassWidget(
+                            windSpeedKmh = weather?.currentWeather?.windSpeed ?: fallbackWindSpeed,
+                            windDirectionDegrees = weather?.currentWeather?.windDirection ?: fallbackWindDirection,
+                            gustSpeedKmh = currentGust,
+                            maxGustKmh = maxGustToday,
+                            unit = uiState.windUnit,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                    item {
-                        DetailWidgetContainer(
-                            label = daylightLabel,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(squareSize),
-                            contentTopGap = 0.dp
-                        ) { _ ->
-                            DaylightGraph(
-                                daylightHours = h,
-                                nowMinutes = locationMinutes,
-                                sunriseMinutes = riseMin,
-                                sunsetMinutes = setMin,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                    DetailWidgetContainer(
+                        label = daylightLabel,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 0.dp
+                    ) { _ ->
+                        DaylightGraph(
+                            daylightHours = h,
+                            nowMinutes = locationMinutes,
+                            sunriseMinutes = riseMin,
+                            sunsetMinutes = setMin,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                    item {
-                        Spacer(modifier = Modifier.height(90.dp))
-                    }
+                    Spacer(modifier = Modifier.height(90.dp))
                 }
             }
         }

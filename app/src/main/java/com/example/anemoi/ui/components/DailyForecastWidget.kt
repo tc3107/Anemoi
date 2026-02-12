@@ -276,14 +276,6 @@ private fun TemperatureRangeTrack(
     globalMax: Double,
     modifier: Modifier = Modifier
 ) {
-    val range = (globalMax - globalMin).takeIf { it > 0.0 } ?: 1.0
-    val dayLow = min(dayMin ?: globalMin, dayMax ?: globalMax)
-    val dayHigh = max(dayMin ?: globalMin, dayMax ?: globalMax)
-    val targetStartFraction = ((dayLow - globalMin) / range).coerceIn(0.0, 1.0).toFloat()
-    val targetEndFraction = ((dayHigh - globalMin) / range).coerceIn(0.0, 1.0).toFloat()
-    val startFraction = targetStartFraction
-    val endFraction = targetEndFraction
-
     Canvas(modifier = modifier.fillMaxWidth()) {
         val centerY = size.height / 2f
         val strokeWidth = max(2f, size.height * 0.65f)
@@ -314,8 +306,12 @@ private fun TemperatureRangeTrack(
 
         if (dayMin == null || dayMax == null) return@Canvas
 
-        val startX = startFraction * size.width
-        val rawEndX = endFraction * size.width
+        val range = (globalMax - globalMin).takeIf { it > 0.0 } ?: 1.0
+        val dayLow = min(dayMin, dayMax)
+        val dayHigh = max(dayMin, dayMax)
+
+        val startX = (((dayLow - globalMin) / range).coerceIn(0.0, 1.0) * size.width).toFloat()
+        val rawEndX = (((dayHigh - globalMin) / range).coerceIn(0.0, 1.0) * size.width).toFloat()
         val endX = max(rawEndX, (startX + strokeWidth).coerceAtMost(size.width))
 
         drawLine(

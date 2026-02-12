@@ -25,8 +25,7 @@ fun UVIndexWidget(
     modifier: Modifier = Modifier
 ) {
     val uvValue = currentUV ?: 0.0
-    val renderedUvValue = uvValue.toFloat()
-    val displayValue = if (currentUV != null) uvValue.roundToInt().toString() else "--"
+    val displayValue = currentUV?.roundToInt()?.toString() ?: "--"
     
     val uvColors = listOf(
         Color(0xFF4CAF50), // Green (Low)
@@ -38,10 +37,10 @@ fun UVIndexWidget(
 
     val uvLevelText = when {
         currentUV == null -> ""
-        uvValue < 3.0 -> "Low"
-        uvValue < 6.0 -> "Moderate"
-        uvValue < 8.0 -> "High"
-        uvValue < 11.0 -> "Very High"
+        uvValue < 3 -> "Low"
+        uvValue < 6 -> "Moderate"
+        uvValue < 8 -> "High"
+        uvValue < 11 -> "Very High"
         else -> "Extreme"
     }
 
@@ -109,7 +108,7 @@ fun UVIndexWidget(
                 val sectionSweep = totalSweep / 11f
                 val indicatorRangeStart = startAngle + (sectionSweep / 2f)
                 val indicatorRangeSweep = totalSweep - sectionSweep
-                val normalizedUv = (renderedUvValue / maxUv).coerceIn(0f, 1f)
+                val normalizedUv = (uvValue.toFloat() / maxUv).coerceIn(0f, 1f)
                 val centerAngle = indicatorRangeStart + normalizedUv * indicatorRangeSweep
                 val sectionStartAngle = centerAngle - (sectionSweep / 2f)
 
