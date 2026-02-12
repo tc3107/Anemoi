@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,28 +57,30 @@ fun WeatherDetailsSheet(
         val selectedLoc = uiState.selectedLocation
         val key = selectedLoc?.let { "${it.lat},${it.lon}" }
         val staleServeWindowMs = 12 * 60 * 60 * 1000L
-        val now = System.currentTimeMillis()
 
         val rawWeather = key?.let { uiState.weatherMap[it] }
         val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
         val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
         val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
 
-        val currentUsable = rawWeather?.currentWeather != null &&
-            currentUpdatedAt > 0L &&
-            now - currentUpdatedAt <= staleServeWindowMs
-        val hourlyUsable = rawWeather?.hourly != null &&
-            hourlyUpdatedAt > 0L &&
-            now - hourlyUpdatedAt <= staleServeWindowMs
-        val dailyUsable = rawWeather?.daily != null &&
-            dailyUpdatedAt > 0L &&
-            now - dailyUpdatedAt <= staleServeWindowMs
+        val weather = remember(rawWeather, currentUpdatedAt, hourlyUpdatedAt, dailyUpdatedAt) {
+            val now = System.currentTimeMillis()
+            val currentUsable = rawWeather?.currentWeather != null &&
+                currentUpdatedAt > 0L &&
+                now - currentUpdatedAt <= staleServeWindowMs
+            val hourlyUsable = rawWeather?.hourly != null &&
+                hourlyUpdatedAt > 0L &&
+                now - hourlyUpdatedAt <= staleServeWindowMs
+            val dailyUsable = rawWeather?.daily != null &&
+                dailyUpdatedAt > 0L &&
+                now - dailyUpdatedAt <= staleServeWindowMs
 
-        val weather = rawWeather?.copy(
-            currentWeather = if (currentUsable) rawWeather.currentWeather else null,
-            hourly = if (hourlyUsable) rawWeather.hourly else null,
-            daily = if (dailyUsable) rawWeather.daily else null
-        )
+            rawWeather?.copy(
+                currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+                hourly = if (hourlyUsable) rawWeather.hourly else null,
+                daily = if (dailyUsable) rawWeather.daily else null
+            )
+        }
 
         val daily = weather?.daily
         val h = daily?.daylightDuration?.firstOrNull()?.div(3600.0) ?: 12.0
@@ -90,12 +93,29 @@ fun WeatherDetailsSheet(
             } catch (e: Exception) { null }
         }
 
-        val riseMin = parseToMinutes(daily?.sunrise?.firstOrNull())
-        val setMin = parseToMinutes(daily?.sunset?.firstOrNull())
+        val riseMin = remember(daily?.sunrise?.firstOrNull()) {
+            parseToMinutes(daily?.sunrise?.firstOrNull())
+        }
+        val setMin = remember(daily?.sunset?.firstOrNull()) {
+            parseToMinutes(daily?.sunset?.firstOrNull())
+        }
 
-        val locationMinutes = parseToMinutes(weather?.currentWeather?.time) ?: run {
-            val nowCal = Calendar.getInstance()
-            nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+        val currentTimeIso = weather?.currentWeather?.time
+        val hourlyTimes = weather?.hourly?.time ?: emptyList()
+        val currentHourPrefix = currentTimeIso?.substringBefore(":")
+        val currentHourIdx = remember(currentHourPrefix, hourlyTimes) {
+            if (currentHourPrefix.isNullOrEmpty()) {
+                -1
+            } else {
+                hourlyTimes.indexOfFirst { it.startsWith(currentHourPrefix) }
+            }
+        }
+
+        val locationMinutes = remember(currentTimeIso) {
+            parseToMinutes(currentTimeIso) ?: run {
+                val nowCal = Calendar.getInstance()
+                nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+            }
         }
 
         val daylightLabel = when {
@@ -103,6 +123,84 @@ fun WeatherDetailsSheet(
             locationMinutes < (riseMin ?: 0) -> "SUNRISE"
             locationMinutes < (setMin ?: 1440) -> "SUNSET"
             else -> "SUNRISE"
+        }
+
+        val uvIndexValues = weather?.hourly?.uvIndex
+        val currentUV = remember(currentHourIdx, uvIndexValues) {
+            if (currentHourIdx != -1 &&
+                uvIndexValues != null &&
+                currentHourIdx < uvIndexValues.size
+            ) {
+                uvIndexValues[currentHourIdx]
+            } else {
+                null
+            }
+        }
+
+        val hourlyPressures = weather?.hourly?.pressures ?: emptyList()
+        val currentPressure = remember(currentHourIdx, hourlyPressures) {
+            if (currentHourIdx != -1 && currentHourIdx < hourlyPressures.size) {
+                hourlyPressures[currentHourIdx]
+            } else {
+                null
+            }
+        }
+        val minPressure = remember(hourlyPressures) {
+            if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).minOrNull() else null
+        }
+        val maxPressure = remember(hourlyPressures) {
+            if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).maxOrNull() else null
+        }
+        val pressureTrend = remember(currentHourIdx, hourlyPressures) {
+            if (currentHourIdx != -1 && currentHourIdx + 3 < hourlyPressures.size) {
+                hourlyPressures[currentHourIdx + 3] - hourlyPressures[currentHourIdx]
+            } else {
+                null
+            }
+        }
+
+        val hourlyWindSpeeds = weather?.hourly?.windSpeeds ?: emptyList()
+        val hourlyWindDirections = weather?.hourly?.windDirections ?: emptyList()
+        val hourlyWindGusts = weather?.hourly?.windGusts ?: emptyList()
+        val fallbackWindSpeed = remember(currentHourIdx, hourlyWindSpeeds) {
+            if (currentHourIdx != -1 && currentHourIdx < hourlyWindSpeeds.size) {
+                hourlyWindSpeeds[currentHourIdx]
+            } else {
+                null
+            }
+        }
+        val fallbackWindDirection = remember(currentHourIdx, hourlyWindDirections) {
+            if (currentHourIdx != -1 && currentHourIdx < hourlyWindDirections.size) {
+                hourlyWindDirections[currentHourIdx]
+            } else {
+                null
+            }
+        }
+        val currentGust = remember(currentHourIdx, hourlyWindGusts) {
+            if (currentHourIdx != -1 && currentHourIdx < hourlyWindGusts.size) {
+                hourlyWindGusts[currentHourIdx]
+            } else {
+                null
+            }
+        }
+        val todayPrefix = remember(currentTimeIso, hourlyTimes) {
+            currentTimeIso?.substringBefore("T")
+                ?: hourlyTimes.firstOrNull()?.substringBefore("T")
+        }
+        val maxGustToday = remember(todayPrefix, hourlyTimes, hourlyWindGusts) {
+            if (!todayPrefix.isNullOrEmpty() && hourlyWindGusts.isNotEmpty()) {
+                hourlyTimes
+                    .mapIndexedNotNull { index, iso ->
+                        if (index < hourlyWindGusts.size && iso.startsWith(todayPrefix)) {
+                            hourlyWindGusts[index]
+                        } else {
+                            null
+                        }
+                    }
+                    .maxOrNull()
+            } else {
+                null
+            }
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -183,10 +281,10 @@ fun WeatherDetailsSheet(
                         contentTopGap = 0.dp
                     ) { widgetTopToGraphInset ->
                         TemperatureGraph(
-                            times = weather?.hourly?.time ?: emptyList(),
+                            times = hourlyTimes,
                             temperatures = weather?.hourly?.temperatures ?: emptyList(),
                             currentTemp = weather?.currentWeather?.temperature,
-                            currentTimeIso = weather?.currentWeather?.time,
+                            currentTimeIso = currentTimeIso,
                             tempUnit = uiState.tempUnit,
                             widgetTopToGraphTopInset = widgetTopToGraphInset,
                             modifier = Modifier.fillMaxSize()
@@ -200,10 +298,10 @@ fun WeatherDetailsSheet(
                         contentTopGap = 0.dp
                     ) { widgetTopToGraphInset ->
                         PrecipitationGraph(
-                            times = weather?.hourly?.time ?: emptyList(),
+                            times = hourlyTimes,
                             probabilities = weather?.hourly?.precipitationProbability ?: emptyList(),
                             precipitations = weather?.hourly?.precipitation ?: emptyList(),
-                            currentTimeIso = weather?.currentWeather?.time,
+                            currentTimeIso = currentTimeIso,
                             widgetTopToGraphTopInset = widgetTopToGraphInset,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -218,10 +316,10 @@ fun WeatherDetailsSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                     HourlyForecastWidget(
-                        times = weather?.hourly?.time ?: emptyList(),
+                        times = hourlyTimes,
                         weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
                         temperatures = weather?.hourly?.temperatures ?: emptyList(),
-                        currentTimeIso = weather?.currentWeather?.time,
+                        currentTimeIso = currentTimeIso,
                         tempUnit = uiState.tempUnit,
                         isExpanded = isExpanded,
                         modifier = Modifier
@@ -237,12 +335,6 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.size(squareSize),
                             contentTopGap = 8.dp
                         ) { _ ->
-                            val currentTimeStr = weather?.currentWeather?.time ?: ""
-                            val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
-                            val currentUV = if (currentHourIdx != -1 && weather?.hourly?.uvIndex != null && currentHourIdx < weather.hourly.uvIndex.size) {
-                                weather.hourly.uvIndex[currentHourIdx]
-                            } else null
-
                             UVIndexWidget(
                                 currentUV = currentUV,
                                 modifier = Modifier.fillMaxSize()
@@ -254,28 +346,11 @@ fun WeatherDetailsSheet(
                             modifier = Modifier.size(squareSize),
                             contentTopGap = 8.dp
                         ) { _ ->
-                            val hourlyPressures = weather?.hourly?.pressures ?: emptyList()
-                            val currentTimeStr = weather?.currentWeather?.time ?: ""
-                            val currentHourIdx = weather?.hourly?.time?.indexOfFirst { it.startsWith(currentTimeStr.substringBefore(":")) } ?: -1
-
-                            val currentPressure = if (currentHourIdx != -1 && currentHourIdx < hourlyPressures.size) {
-                                hourlyPressures[currentHourIdx]
-                            } else {
-                                null
-                            }
-
-                            val minP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).minOrNull() else null
-                            val maxP = if (hourlyPressures.isNotEmpty()) hourlyPressures.take(24).maxOrNull() else null
-
-                            val trend = if (currentHourIdx != -1 && currentHourIdx + 3 < hourlyPressures.size) {
-                                hourlyPressures[currentHourIdx + 3] - hourlyPressures[currentHourIdx]
-                            } else null
-
                             PressureDial(
                                 currentPressure = currentPressure,
-                                minPressure = minP,
-                                maxPressure = maxP,
-                                trend = trend,
+                                minPressure = minPressure,
+                                maxPressure = maxPressure,
+                                trend = pressureTrend,
                                 unit = uiState.pressureUnit,
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -288,55 +363,6 @@ fun WeatherDetailsSheet(
                             .height(squareSize),
                         contentTopGap = 4.dp
                     ) { _ ->
-                        val currentTimeIso = weather?.currentWeather?.time
-                        val currentHourPrefix = currentTimeIso?.substringBefore(":")
-                        val currentHourIdx = if (!currentHourPrefix.isNullOrEmpty()) {
-                            weather?.hourly?.time?.indexOfFirst {
-                                it.startsWith(currentHourPrefix)
-                            } ?: -1
-                        } else {
-                            -1
-                        }
-
-                        val hourlyWindSpeeds = weather?.hourly?.windSpeeds ?: emptyList()
-                        val hourlyWindDirections = weather?.hourly?.windDirections ?: emptyList()
-                        val hourlyWindGusts = weather?.hourly?.windGusts ?: emptyList()
-
-                        val fallbackWindSpeed = if (currentHourIdx != -1 && currentHourIdx < hourlyWindSpeeds.size) {
-                            hourlyWindSpeeds[currentHourIdx]
-                        } else {
-                            null
-                        }
-
-                        val fallbackWindDirection = if (currentHourIdx != -1 && currentHourIdx < hourlyWindDirections.size) {
-                            hourlyWindDirections[currentHourIdx]
-                        } else {
-                            null
-                        }
-
-                        val currentGust = if (currentHourIdx != -1 && currentHourIdx < hourlyWindGusts.size) {
-                            hourlyWindGusts[currentHourIdx]
-                        } else {
-                            null
-                        }
-
-                        val todayPrefix = currentTimeIso?.substringBefore("T")
-                            ?: weather?.hourly?.time?.firstOrNull()?.substringBefore("T")
-
-                        val maxGustToday = if (!todayPrefix.isNullOrEmpty() && hourlyWindGusts.isNotEmpty()) {
-                            weather?.hourly?.time
-                                ?.mapIndexedNotNull { index, iso ->
-                                    if (index < hourlyWindGusts.size && iso.startsWith(todayPrefix)) {
-                                        hourlyWindGusts[index]
-                                    } else {
-                                        null
-                                    }
-                                }
-                                ?.maxOrNull()
-                        } else {
-                            null
-                        }
-
                         WindCompassWidget(
                             windSpeedKmh = weather?.currentWeather?.windSpeed ?: fallbackWindSpeed,
                             windDirectionDegrees = weather?.currentWeather?.windDirection ?: fallbackWindDirection,

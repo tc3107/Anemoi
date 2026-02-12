@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Point
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.*
 
 @Composable
@@ -44,8 +46,10 @@ fun MapBackground(
     freezeCameraUpdates: Boolean = false,
     interactionEnabled: Boolean = true
 ) {
-    val mapSwitchDebounceMs = 180L
-    val mapSwitchMaskTailMs = 80L
+    val mapSwitchDebounceMs = 120L
+    val mapSwitchMaskTailMs = 120L
+    val centerRecoveryToleranceDeg = 6e-5
+    val minCenterRecoveryIntervalMs = 220L
 
     // Current coords actually applied to MapView
     var appliedLat by remember { mutableDoubleStateOf(lat) }
@@ -65,6 +69,8 @@ fun MapBackground(
     var transitionMaskTarget by remember { mutableFloatStateOf(0f) }
     var isInitialLoad by remember { mutableStateOf(true) }
     var lastCenterTarget by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var lastCenterCommandAtMs by remember { mutableLongStateOf(0L) }
+    var lastInteractionEnabled by remember { mutableStateOf(interactionEnabled) }
     val currentObfuscationMode by rememberUpdatedState(obfuscationMode)
     val currentGridKm by rememberUpdatedState(gridKm)
     val currentLastResponseCoords by rememberUpdatedState(lastResponseCoords)
@@ -75,9 +81,15 @@ fun MapBackground(
         label = "transitionMaskAlpha"
     )
 
-    var isMapMoving by remember { mutableStateOf(false) }
+    val isMapMoving = remember { AtomicBoolean(false) }
     val movementHandler = remember { Handler(Looper.getMainLooper()) }
-    val resetMovingRunnable = remember { Runnable { isMapMoving = false } }
+    val resetMovingRunnable = remember { Runnable { isMapMoving.set(false) } }
+
+    DisposableEffect(movementHandler, resetMovingRunnable) {
+        onDispose {
+            movementHandler.removeCallbacks(resetMovingRunnable)
+        }
+    }
 
     // Coalesce rapid location changes and only move the map for the latest target.
     LaunchedEffect(lat, lon) {
@@ -130,7 +142,7 @@ fun MapBackground(
 
                         addMapListener(object : MapListener {
                             private fun onMove() {
-                                isMapMoving = true
+                                isMapMoving.set(true)
                                 movementHandler.removeCallbacks(resetMovingRunnable)
                                 movementHandler.postDelayed(resetMovingRunnable, 500)
                             }
@@ -153,7 +165,7 @@ fun MapBackground(
                             }
 
                             override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
-                                if (shadow || isMapMoving || mapView.isAnimating || currentObfuscationMode != ObfuscationMode.GRID) return
+                                if (shadow || isMapMoving.get() || mapView.isAnimating || currentObfuscationMode != ObfuscationMode.GRID) return
 
                                 val progress = responseProgress.value
                                 val factor = if (progress > 0f && progress < 1f) sin(progress * PI.toFloat()) else 0f
@@ -234,11 +246,14 @@ fun MapBackground(
                     }
                 },
                 update = { view ->
-                    view.setOnTouchListener { _, _ -> !interactionEnabled }
+                    if (interactionEnabled != lastInteractionEnabled) {
+                        view.setOnTouchListener { _, _ -> !interactionEnabled }
+                        lastInteractionEnabled = interactionEnabled
+                    }
 
                     if (freezeCameraUpdates) {
                         if (!view.isAnimating) {
-                            isMapMoving = false
+                            isMapMoving.set(false)
                         }
                         return@AndroidView
                     }
@@ -252,35 +267,39 @@ fun MapBackground(
                     val targetChanged = lastCenterTarget != currentTarget
                     val center = view.mapCenter
                     val centerMismatch = center == null ||
-                        abs(center.latitude - appliedLat) > 1e-5 ||
-                        abs(center.longitude - appliedLon) > 1e-5
+                        abs(center.latitude - appliedLat) > centerRecoveryToleranceDeg ||
+                        abs(center.longitude - appliedLon) > centerRecoveryToleranceDeg
+                    val nowMs = SystemClock.uptimeMillis()
+                    val canRecoverCenter = nowMs - lastCenterCommandAtMs >= minCenterRecoveryIntervalMs
+                    fun commandCenter() {
+                        view.controller.setCenter(appliedGeoPoint)
+                        lastCenterTarget = currentTarget
+                        lastCenterCommandAtMs = nowMs
+                    }
 
                     // Use instant move while transition pulse is active.
                     val isTransitioning = transitionMaskTarget > 0f
                     if (isTransitioning) {
-                        if (targetChanged || centerMismatch || view.isAnimating) {
-                            view.controller.setCenter(appliedGeoPoint)
-                            lastCenterTarget = currentTarget
+                        if (targetChanged) {
+                            commandCenter()
                         }
                     } else if (shouldAnimate) {
                         if (targetChanged) {
                             // Snap instead of pan to avoid CPU-heavy camera animations while switching locations.
-                            view.controller.setCenter(appliedGeoPoint)
-                            lastCenterTarget = currentTarget
-                        } else if (!view.isAnimating && centerMismatch) {
-                            // Recovery path: never allow map center to remain between two locations.
-                            view.controller.setCenter(appliedGeoPoint)
+                            commandCenter()
+                        } else if (!view.isAnimating && centerMismatch && canRecoverCenter) {
+                            // Recovery path with a small cooldown to avoid repeated center commands.
+                            commandCenter()
                         }
                     } else {
-                        if (targetChanged || centerMismatch || view.isAnimating) {
-                            view.controller.setCenter(appliedGeoPoint)
-                            lastCenterTarget = currentTarget
+                        if (targetChanged || (centerMismatch && canRecoverCenter) || view.isAnimating) {
+                            commandCenter()
                         }
-                        isMapMoving = false
+                        isMapMoving.set(false)
                     }
                     
                     if (!view.isAnimating) {
-                        isMapMoving = false
+                        isMapMoving.set(false)
                     }
 
                     val isResponseAnimating = responseProgress.value > 0f && responseProgress.value < 1f

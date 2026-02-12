@@ -19,12 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -47,7 +45,6 @@ import com.example.anemoi.data.WindUnit
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -256,14 +253,13 @@ fun WindCompassWidget(
 private fun rememberSmoothedCompassDialRotationDegrees(): Float {
     val context = LocalContext.current
     var hasCompassData by remember { mutableStateOf(false) }
-    var targetRotationDegrees by remember { mutableStateOf(0f) }
     var renderedRotationDegrees by remember { mutableStateOf(0f) }
 
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         if (sensorManager == null) {
             hasCompassData = false
-            targetRotationDegrees = 0f
+            renderedRotationDegrees = 0f
             onDispose { }
         } else {
             val rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -279,7 +275,7 @@ private fun rememberSmoothedCompassDialRotationDegrees(): Float {
 
             fun updateFromAzimuth(azimuthDegrees: Float) {
                 hasCompassData = true
-                targetRotationDegrees = normalizeDegrees(-azimuthDegrees)
+                renderedRotationDegrees = normalizeDegrees(-azimuthDegrees)
             }
 
             val listener = object : SensorEventListener {
@@ -333,43 +329,11 @@ private fun rememberSmoothedCompassDialRotationDegrees(): Float {
                 sensorManager.registerListener(listener, magneticSensor, SensorManager.SENSOR_DELAY_UI)
             } else {
                 hasCompassData = false
-                targetRotationDegrees = 0f
+                renderedRotationDegrees = 0f
             }
 
             onDispose {
                 sensorManager.unregisterListener(listener)
-            }
-        }
-    }
-
-    LaunchedEffect(hasCompassData) {
-        if (!hasCompassData) {
-            renderedRotationDegrees = 0f
-            return@LaunchedEffect
-        }
-
-        var lastFrameNanos = 0L
-        while (true) {
-            withFrameNanos { frameNanos ->
-                if (lastFrameNanos == 0L) {
-                    lastFrameNanos = frameNanos
-                    return@withFrameNanos
-                }
-
-                val dtSeconds = ((frameNanos - lastFrameNanos).coerceAtMost(100_000_000L) / 1_000_000_000f)
-                lastFrameNanos = frameNanos
-
-                val delta = shortestAngleDeltaDegrees(
-                    from = renderedRotationDegrees,
-                    to = targetRotationDegrees
-                )
-                if (abs(delta) < 0.06f) {
-                    renderedRotationDegrees = targetRotationDegrees
-                    return@withFrameNanos
-                }
-
-                val blend = (1f - exp((-9.5f * dtSeconds).toDouble()).toFloat()).coerceIn(0f, 1f)
-                renderedRotationDegrees = normalizeDegrees(renderedRotationDegrees + (delta * blend))
             }
         }
     }

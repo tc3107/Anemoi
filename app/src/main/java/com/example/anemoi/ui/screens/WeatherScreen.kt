@@ -270,7 +270,19 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val overrideBackgroundPreset = backgroundOverridePresetAt(uiState.backgroundOverridePresetIndex)
     val overrideBackgroundTimeIso = backgroundOverrideTimeIso(overrideBackgroundPreset.hourOfDay)
     val backgroundPageKey = settledLocationKey ?: "page:${pagerState.settledPage}"
-    val realWindSpeedKmh = warningWeather?.currentWeather?.windSpeed ?: 0.0
+    val backgroundKey = settledLocationKey
+    val backgroundRawWeather = backgroundKey?.let { uiState.weatherMap[it] }
+    val backgroundCurrentUpdatedAt = backgroundKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
+    val backgroundCurrentWeather = if (
+        backgroundRawWeather?.currentWeather != null &&
+        backgroundCurrentUpdatedAt > 0L &&
+        warningNow - backgroundCurrentUpdatedAt <= warningStaleServeWindowMs
+    ) {
+        backgroundRawWeather.currentWeather
+    } else {
+        null
+    }
+    val realWindSpeedKmh = backgroundCurrentWeather?.windSpeed ?: 0.0
     val backgroundWindSpeedKmh = if (uiState.isBackgroundOverrideEnabled) {
         uiState.backgroundOverrideWindSpeedKmh.toDouble()
     } else {
@@ -376,8 +388,8 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
             }
         } else {
             DynamicWeatherBackground(
-                weatherCode = warningWeather?.currentWeather?.weatherCode,
-                weatherTimeIso = warningWeather?.currentWeather?.time,
+                weatherCode = backgroundCurrentWeather?.weatherCode,
+                weatherTimeIso = backgroundCurrentWeather?.time,
                 windSpeedKmh = backgroundWindSpeedKmh,
                 pageKey = backgroundPageKey,
                 modifier = Modifier.fillMaxSize()
