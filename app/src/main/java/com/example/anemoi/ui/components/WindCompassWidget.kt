@@ -644,12 +644,6 @@ private fun CompassDial(
                 center = center,
                 style = Stroke(width = 1.6.dp.toPx())
             )
-            drawCircle(
-                color = Color.White.copy(alpha = 0.24f),
-                radius = 2.3.dp.toPx(),
-                center = Offset(center.x - 2.4.dp.toPx(), center.y - 2.4.dp.toPx())
-            )
-
             val nativeCanvas = drawContext.canvas.nativeCanvas
 
             fun drawCardinalLabel(text: String, point: Offset) {
