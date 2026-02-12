@@ -37,7 +37,6 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.example.anemoi.data.LocationItem
 import com.example.anemoi.ui.components.DynamicWeatherBackground
-import com.example.anemoi.ui.components.MapBackground
 import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
 import com.example.anemoi.ui.components.WeatherDisplay
@@ -305,7 +304,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         add("mem used=$overlayUsedMemMb MB free=$overlayFreeMemMb MB max=$overlayMaxMemMb MB")
         add("page=${pagerState.currentPage + 1}/$totalPages settled=${pagerState.settledPage + 1}")
         add("loading=${uiState.isLoading} locating=${uiState.isLocating} follow=${uiState.isFollowMode}")
-        add("map=${uiState.mapEnabled} settings=${uiState.isSettingsOpen} organizer=${uiState.isOrganizerMode}")
+        add("settings=${uiState.isSettingsOpen} organizer=${uiState.isOrganizerMode}")
         add(
             "bgOverride=${uiState.isBackgroundOverrideEnabled} preset=${
                 if (uiState.isBackgroundOverrideEnabled) overrideBackgroundPreset.label else "-"
@@ -369,23 +368,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 pageKey = backgroundPageKey,
                 modifier = Modifier.fillMaxSize()
             )
-        } else if (uiState.mapEnabled) {
-            settledPageLocation?.let { location ->
-                MapBackground(
-                    lat = location.lat,
-                    lon = location.lon,
-                    zoom = if (uiState.customValuesEnabled) uiState.mapZoom else 16f,
-                    blurStrength = if (uiState.customValuesEnabled) uiState.blurStrength else 6f,
-                    tintAlpha = if (uiState.customValuesEnabled) uiState.tintAlpha else 0.1f,
-                    obfuscationMode = uiState.obfuscationMode,
-                    gridKm = uiState.gridKm.toDouble(),
-                    lastResponseCoords = uiState.lastResponseCoords,
-                    responseAnimTrigger = uiState.responseAnimTrigger,
-                    shouldAnimate = !uiState.isLoading,
-                    freezeCameraUpdates = isPagerSwitchInProgress,
-                    interactionEnabled = !uiState.isOrganizerMode && !uiState.isSettingsOpen
-                )
-            }
         } else {
             DynamicWeatherBackground(
                 weatherCode = backgroundCurrentWeather?.weatherCode,

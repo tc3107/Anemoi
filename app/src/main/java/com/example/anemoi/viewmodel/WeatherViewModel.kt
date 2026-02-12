@@ -62,13 +62,9 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import org.osmdroid.tileprovider.cachemanager.CacheManager
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.views.MapView
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
-import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.ArrayDeque
@@ -107,10 +103,6 @@ data class WeatherUiState(
     val pressureUnit: PressureUnit = PressureUnit.HPA,
     val windUnit: WindUnit = WindUnit.KMH,
     val customValuesEnabled: Boolean = false,
-    val mapEnabled: Boolean = false,
-    val mapZoom: Float = 16f,
-    val blurStrength: Float = 6f,
-    val tintAlpha: Float = 0.1f,
     val textAlpha: Float = 0.8f,
     val sheetBlurStrength: Float = 16f,
     val sheetDistortion: Float = 0.2f,
@@ -225,7 +217,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private var followModeJob: Job? = null
     private var startupPrefetchJob: Job? = null
     private var persistCachesJob: Job? = null
-    private var mapPreCacheJob: Job? = null
     private val inFlightWeatherRequests = mutableMapOf<String, Deferred<Boolean>>()
 
     private var lastLocation: LocationItem? = null
@@ -246,10 +237,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val pressureUnitKey = stringPreferencesKey("pressure_unit")
     private val windUnitKey = stringPreferencesKey("wind_unit")
     private val customValuesKey = booleanPreferencesKey("custom_values_enabled")
-    private val mapEnabledKey = booleanPreferencesKey("map_enabled")
-    private val mapZoomKey = floatPreferencesKey("map_zoom")
-    private val blurStrengthKey = floatPreferencesKey("blur_strength")
-    private val tintAlphaKey = floatPreferencesKey("tint_alpha")
     private val textAlphaKey = floatPreferencesKey("text_alpha")
     private val sheetBlurKey = floatPreferencesKey("sheet_blur")
     private val sheetDistortionKey = floatPreferencesKey("sheet_distortion")
@@ -388,10 +375,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     pressureUnit = prefs[pressureUnitKey]?.let { PressureUnit.valueOf(it) } ?: PressureUnit.HPA,
                     windUnit = prefs[windUnitKey]?.let { WindUnit.valueOf(it) } ?: WindUnit.KMH,
                     customValuesEnabled = prefs[customValuesKey] ?: false,
-                    mapEnabled = prefs[mapEnabledKey] ?: false,
-                    mapZoom = prefs[mapZoomKey] ?: 16f,
-                    blurStrength = prefs[blurStrengthKey] ?: 6f,
-                    tintAlpha = prefs[tintAlphaKey] ?: 0.1f,
                     textAlpha = prefs[textAlphaKey] ?: 0.8f,
                     sheetBlurStrength = prefs[sheetBlurKey] ?: 16f,
                     sheetDistortion = prefs[sheetDistortionKey] ?: 0.2f,
@@ -403,7 +386,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             refreshActiveRequestSignature()
 
             loadPersistedCaches(prefs)
-            preCacheLocations(favs + listOfNotNull(searched, live))
 
             if (_uiState.value.isFollowMode) {
                 startFollowMode(applicationContext)
@@ -520,32 +502,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     showLoading = false
                 )
                 delay(120)
-            }
-        }
-    }
-
-    private fun preCacheLocations(locations: List<LocationItem>) {
-        mapPreCacheJob?.cancel()
-        if (!_uiState.value.mapEnabled || locations.isEmpty()) return
-
-        mapPreCacheJob = viewModelScope.launch {
-            try {
-                val cacheManager = withContext(Dispatchers.Main) {
-                    val mapView = MapView(applicationContext)
-                    CacheManager(mapView)
-                }
-
-                withContext(Dispatchers.IO) {
-                    locations.distinctBy { locationKey(it) }.forEach { loc ->
-                        addLog("Pre-caching tiles for: ${loc.name}")
-                        val bb = BoundingBox(loc.lat + 0.08, loc.lon + 0.08, loc.lat - 0.08, loc.lon - 0.08)
-                        cacheManager.downloadAreaAsync(applicationContext, bb, 13, 17)
-                    }
-                }
-            } catch (_: CancellationException) {
-                // Expected when map pre-cache work is canceled.
-            } catch (e: Exception) {
-                addLog("Pre-cache error: ${e.message}")
             }
         }
     }
@@ -869,9 +825,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     fun toggleCustomValues(enabled: Boolean) {
-        val defaultZoom = 16f
-        val defaultBlur = 6f
-        val defaultTint = 0.1f
         val defaultTextAlpha = 0.8f
         val defaultSheetBlur = 16f
         val defaultSheetDistortion = 0.2f
@@ -880,9 +833,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         _uiState.update {
             it.copy(
                 customValuesEnabled = enabled,
-                mapZoom = defaultZoom,
-                blurStrength = defaultBlur,
-                tintAlpha = defaultTint,
                 textAlpha = defaultTextAlpha,
                 sheetBlurStrength = defaultSheetBlur,
                 sheetDistortion = defaultSheetDistortion,
@@ -892,58 +842,11 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         viewModelScope.launch {
             applicationContext.dataStore.edit { prefs ->
                 prefs[customValuesKey] = enabled
-                prefs[mapZoomKey] = defaultZoom
-                prefs[blurStrengthKey] = defaultBlur
-                prefs[tintAlphaKey] = defaultTint
                 prefs[textAlphaKey] = defaultTextAlpha
                 prefs[sheetBlurKey] = defaultSheetBlur
                 prefs[sheetDistortionKey] = defaultSheetDistortion
                 prefs[searchBarTintKey] = defaultSearchBarTint
             }
-        }
-    }
-
-    fun setMapZoom(zoom: Float) {
-        _uiState.update { it.copy(mapZoom = zoom) }
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[mapZoomKey] = zoom }
-        }
-    }
-
-    fun setMapEnabled(enabled: Boolean) {
-        if (_uiState.value.mapEnabled == enabled) return
-
-        _uiState.update { it.copy(mapEnabled = enabled) }
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[mapEnabledKey] = enabled }
-        }
-
-        if (enabled) {
-            val state = _uiState.value
-            preCacheLocations(
-                state.favorites + listOfNotNull(
-                    state.searchedLocation,
-                    state.lastLiveLocation,
-                    state.selectedLocation,
-                    lastLocation
-                )
-            )
-        } else {
-            mapPreCacheJob?.cancel()
-        }
-    }
-
-    fun setBlurStrength(strength: Float) {
-        _uiState.update { it.copy(blurStrength = strength) }
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[blurStrengthKey] = strength }
-        }
-    }
-
-    fun setTintAlpha(alpha: Float) {
-        _uiState.update { it.copy(tintAlpha = alpha) }
-        viewModelScope.launch {
-            applicationContext.dataStore.edit { it[tintAlphaKey] = alpha }
         }
     }
 
@@ -1086,7 +989,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             state.copy(favorites = filteredFavorites, pageStatuses = emptyMap())
         }
         saveFavorites(filteredFavorites)
-        preCacheLocations(filteredFavorites)
     }
 
     fun reorderFavorites(fromIndex: Int, toIndex: Int) {
@@ -1098,16 +1000,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 saveFavorites(newList)
                 state.copy(favorites = newList, pageStatuses = emptyMap())
             } else state
-        }
-    }
-
-    fun clearMapCache() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val cacheDir = File(applicationContext.cacheDir, "osmdroid")
-            if (cacheDir.exists()) {
-                cacheDir.deleteRecursively()
-                addLog("Map cache cleared")
-            }
         }
     }
 
@@ -1514,7 +1406,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
         if (isManualSearch) {
             saveSearchedLocation(_uiState.value.searchedLocation)
-            preCacheLocations(listOf(updatedLocation))
         }
 
         locationJob?.cancel()
@@ -1538,7 +1429,6 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             }
 
             saveFavorites(newFavorites)
-            preCacheLocations(newFavorites)
 
             val isNowFavorite = newFavorites.any { it.name == location.name }
             val newSearched = if (isNowFavorite && state.searchedLocation?.name == location.name) null else state.searchedLocation

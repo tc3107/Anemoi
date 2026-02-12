@@ -8,7 +8,7 @@ Anemoi is an Android weather app built with Jetpack Compose. It combines live lo
 - Place search with geocoding suggestions
 - Live GPS location and follow mode
 - Favorites and location organization
-- Map-based visual background with local tile caching
+- Dynamic weather-reactive visual background
 - Adjustable display and privacy settings (including coordinate obfuscation modes)
 
 ## Tech Stack
@@ -18,7 +18,6 @@ Anemoi is an Android weather app built with Jetpack Compose. It combines live lo
 - Retrofit + Kotlinx Serialization + OkHttp
 - Google Play Services Location
 - AndroidX DataStore
-- osmdroid
 
 ## Requirements
 
@@ -46,7 +45,6 @@ To run unit tests:
 
 - Geocoding: OpenStreetMap Nominatim API
 - Forecasts: Open-Meteo API
-- Map tiles: OpenStreetMap via osmdroid
 
 No private API key is required for the current implementation.
 

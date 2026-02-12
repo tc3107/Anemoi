@@ -113,33 +113,6 @@ fun DebugScreen(onBack: () -> Unit, viewModel: WeatherViewModel) {
                 
                 AnimatedVisibility(visible = uiState.customValuesEnabled) {
                     Column {
-                        Text("Map Zoom: ${"%.1f".format(uiState.mapZoom)}", fontSize = 14.sp)
-                        Slider(
-                            value = uiState.mapZoom,
-                            onValueChange = { viewModel.setMapZoom(it) },
-                            valueRange = 1f..20f
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Text("Blur Strength: ${uiState.blurStrength.toInt()}dp", fontSize = 14.sp)
-                        Slider(
-                            value = uiState.blurStrength,
-                            onValueChange = { viewModel.setBlurStrength(it) },
-                            valueRange = 0f..50f
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Text("Background Blueness: ${(uiState.tintAlpha * 100).toInt()}%", fontSize = 14.sp)
-                        Slider(
-                            value = uiState.tintAlpha,
-                            onValueChange = { viewModel.setTintAlpha(it) },
-                            valueRange = 0f..1f
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
                         Text("Text Transparency: ${((1f - uiState.textAlpha) * 100).toInt()}%", fontSize = 14.sp)
                         Slider(
                             value = uiState.textAlpha,

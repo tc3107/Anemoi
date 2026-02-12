@@ -25,7 +25,7 @@ fun MainContent(viewModel: WeatherViewModel) {
         }
     }
 
-    // We always show WeatherScreen because it contains the MapBackground 
-    // which the overlays (Settings, Organizer) blur.
+    // We always show WeatherScreen so overlays (Settings, Organizer)
+    // layer over the same weather surface.
     WeatherScreen(viewModel = viewModel)
 }

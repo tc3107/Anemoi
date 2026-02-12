@@ -64,9 +64,6 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.work.runtime.ktx)
-    
-    // Maps
-    implementation(libs.osmdroid.android)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
