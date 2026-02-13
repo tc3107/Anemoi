@@ -1,6 +1,8 @@
 package com.example.anemoi.ui.components
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -10,15 +12,9 @@ import android.view.Surface
 import android.view.WindowManager
 import android.graphics.Paint
 import android.graphics.Typeface
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,12 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -55,9 +51,11 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.WindUnit
+import com.example.anemoi.util.PerformanceProfiler
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -303,6 +301,8 @@ private fun rememberCompassRotationState(): CompassRotationState {
             var hasAccelerometer = false
             var hasMagnetic = false
             var filteredAzimuthDegrees: Float? = null
+            var lastPublishedRotationNs = 0L
+            val minPublishIntervalNs = 33_000_000L
 
             fun currentDisplayRotation(): Int {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -323,7 +323,10 @@ private fun rememberCompassRotationState(): CompassRotationState {
                 }
             }
 
-            fun updateFromRotationMatrix(matrix: FloatArray) {
+            fun updateFromRotationMatrix(
+                matrix: FloatArray,
+                sensorTimestampNs: Long
+            ) {
                 val (xAxis, yAxis) = orientationAxesForRotation(currentDisplayRotation())
                 val remapSuccess = SensorManager.remapCoordinateSystem(
                     matrix,
@@ -344,54 +347,63 @@ private fun rememberCompassRotationState(): CompassRotationState {
                 }
 
                 filteredAzimuthDegrees = smoothedAzimuth
-                hasCompassData = true
-                renderedRotationDegrees = normalizeDegrees(-smoothedAzimuth)
+                val nextRotation = normalizeDegrees(-smoothedAzimuth)
+                val isFirstSample = !hasCompassData
+                val intervalElapsed = (sensorTimestampNs - lastPublishedRotationNs) >= minPublishIntervalNs
+                val changedEnough = abs(shortestAngleDeltaDegrees(renderedRotationDegrees, nextRotation)) >= 3f
+                if (isFirstSample || intervalElapsed || changedEnough) {
+                    hasCompassData = true
+                    renderedRotationDegrees = nextRotation
+                    lastPublishedRotationNs = sensorTimestampNs
+                }
             }
 
             val listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
-                    when (event.sensor.type) {
-                        Sensor.TYPE_ROTATION_VECTOR -> {
-                            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                            updateFromRotationMatrix(rotationMatrix)
-                        }
+                    PerformanceProfiler.measure(name = "WindCompass/SensorUpdate", category = "sensor") {
+                        when (event.sensor.type) {
+                            Sensor.TYPE_ROTATION_VECTOR -> {
+                                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                                updateFromRotationMatrix(rotationMatrix, event.timestamp)
+                            }
 
-                        Sensor.TYPE_ACCELEROMETER -> {
-                            if (event.values.size >= 3) {
-                                sensorLowPass(
-                                    input = event.values,
-                                    output = accelerometerReading,
-                                    hasOutput = hasAccelerometer,
-                                    alpha = 0.2f
-                                )
-                                hasAccelerometer = true
+                            Sensor.TYPE_ACCELEROMETER -> {
+                                if (event.values.size >= 3) {
+                                    sensorLowPass(
+                                        input = event.values,
+                                        output = accelerometerReading,
+                                        hasOutput = hasAccelerometer,
+                                        alpha = 0.2f
+                                    )
+                                    hasAccelerometer = true
+                                }
+                            }
+
+                            Sensor.TYPE_MAGNETIC_FIELD -> {
+                                if (event.values.size >= 3) {
+                                    sensorLowPass(
+                                        input = event.values,
+                                        output = magneticReading,
+                                        hasOutput = hasMagnetic,
+                                        alpha = 0.26f
+                                    )
+                                    hasMagnetic = true
+                                }
                             }
                         }
 
-                        Sensor.TYPE_MAGNETIC_FIELD -> {
-                            if (event.values.size >= 3) {
-                                sensorLowPass(
-                                    input = event.values,
-                                    output = magneticReading,
-                                    hasOutput = hasMagnetic,
-                                    alpha = 0.26f
-                                )
-                                hasMagnetic = true
-                            }
+                        if (rotationVectorSensor == null &&
+                            hasAccelerometer &&
+                            hasMagnetic &&
+                            SensorManager.getRotationMatrix(
+                                rotationMatrix,
+                                null,
+                                accelerometerReading,
+                                magneticReading
+                            )
+                        ) {
+                            updateFromRotationMatrix(rotationMatrix, event.timestamp)
                         }
-                    }
-
-                    if (rotationVectorSensor == null &&
-                        hasAccelerometer &&
-                        hasMagnetic &&
-                        SensorManager.getRotationMatrix(
-                            rotationMatrix,
-                            null,
-                            accelerometerReading,
-                            magneticReading
-                        )
-                    ) {
-                        updateFromRotationMatrix(rotationMatrix)
                     }
                 }
 
@@ -399,10 +411,10 @@ private fun rememberCompassRotationState(): CompassRotationState {
             }
 
             if (rotationVectorSensor != null) {
-                sensorManager.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(listener, rotationVectorSensor, SensorManager.SENSOR_DELAY_UI)
             } else if (accelerometerSensor != null && magneticSensor != null) {
-                sensorManager.registerListener(listener, accelerometerSensor, SensorManager.SENSOR_DELAY_GAME)
-                sensorManager.registerListener(listener, magneticSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(listener, accelerometerSensor, SensorManager.SENSOR_DELAY_UI)
+                sensorManager.registerListener(listener, magneticSensor, SensorManager.SENSOR_DELAY_UI)
             } else {
                 hasCompassData = false
                 renderedRotationDegrees = 0f
@@ -485,31 +497,33 @@ private fun MetricLineText(
     letterSpacingEm: Float = 0f
 ) {
     Canvas(modifier = modifier.fillMaxSize()) {
-        val alignEnd = textAlign == TextAlign.End
-        val paint = Paint().apply {
-            isAntiAlias = true
-            this.color = color.toArgb()
-            this.textAlign = if (alignEnd) Paint.Align.RIGHT else Paint.Align.LEFT
-            typeface = Typeface.create(
-                Typeface.DEFAULT,
-                if (fontWeight >= FontWeight.SemiBold) Typeface.BOLD else Typeface.NORMAL
-            )
-            letterSpacing = letterSpacingEm
-        }
+        PerformanceProfiler.measure(name = "WindCompass/MetricText/Draw", category = "widget-draw") {
+            val alignEnd = textAlign == TextAlign.End
+            val paint = Paint().apply {
+                isAntiAlias = true
+                this.color = color.toArgb()
+                this.textAlign = if (alignEnd) Paint.Align.RIGHT else Paint.Align.LEFT
+                typeface = Typeface.create(
+                    Typeface.DEFAULT,
+                    if (fontWeight >= FontWeight.SemiBold) Typeface.BOLD else Typeface.NORMAL
+                )
+                letterSpacing = letterSpacingEm
+            }
 
-        val minPx = minFontSize.toPx()
-        val stepPx = 0.75.sp.toPx()
-        var textSizePx = maxFontSize.toPx()
-        paint.textSize = textSizePx
-
-        while (paint.measureText(text) > size.width && textSizePx > minPx) {
-            textSizePx = (textSizePx - stepPx).coerceAtLeast(minPx)
+            val minPx = minFontSize.toPx()
+            val stepPx = 0.75.sp.toPx()
+            var textSizePx = maxFontSize.toPx()
             paint.textSize = textSizePx
-        }
 
-        val baselineY = (size.height / 2f) - ((paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f)
-        val textX = if (alignEnd) size.width else 0f
-        drawContext.canvas.nativeCanvas.drawText(text, textX, baselineY, paint)
+            while (paint.measureText(text) > size.width && textSizePx > minPx) {
+                textSizePx = (textSizePx - stepPx).coerceAtLeast(minPx)
+                paint.textSize = textSizePx
+            }
+
+            val baselineY = (size.height / 2f) - ((paint.fontMetrics.ascent + paint.fontMetrics.descent) / 2f)
+            val textX = if (alignEnd) size.width else 0f
+            drawContext.canvas.nativeCanvas.drawText(text, textX, baselineY, paint)
+        }
     }
 }
 
@@ -527,64 +541,58 @@ private fun CompassDial(
         dampingRatio = 0.88f,
         label = "heading-arrow"
     )
-    val centerPulseAlpha by rememberInfiniteTransition(label = "compass-pulse").animateFloat(
-        initialValue = 0.14f,
-        targetValue = 0.22f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "center-pulse"
-    )
+    val density = LocalDensity.current
+    val densityScale = density.density
+    val tickCount = 72
+    val cardinalStep = tickCount / 4
+    val cardinalCutoutRadius = 1
 
-    Box(
-        modifier = modifier.graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
+    BoxWithConstraints(
+        modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        val widthPx = with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
+        val heightPx = with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
+        val staticDialBitmap = remember(
+            widthPx,
+            heightPx,
+            densityScale,
+            tickCount,
+            cardinalStep,
+            cardinalCutoutRadius
+        ) {
+            PerformanceProfiler.measure(name = "WindCompass/Dial/TicksBitmapBuild", category = "widget-cache") {
+                buildCompassDialStaticBitmap(
+                    widthPx = widthPx,
+                    heightPx = heightPx,
+                    densityScale = densityScale,
+                    tickCount = tickCount,
+                    cardinalStep = cardinalStep,
+                    cardinalCutoutRadius = cardinalCutoutRadius
+                )
+            }
+        }
+
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = (size.minDimension / 2f) - 9.dp.toPx()
             val dialRotation = normalizeDegrees(dialRotationDegrees)
             val sensorAlpha = if (hasSensorData) 1f else 0.58f
-            val tickCount = 120
-            val tickStep = 360f / tickCount
-            val rimRadius = radius + 8.dp.toPx()
-            val arrowBoundaryRadius = radius + 6.dp.toPx()
-            val centerGlassRadius = 13.5.dp.toPx()
-            val centerLineGapRadius = centerGlassRadius + 0.9.dp.toPx()
-            val cardinalIndices = setOf(0, tickCount / 4, tickCount / 2, (tickCount * 3) / 4)
-            val cardinalCutoutRadius = 2 // hides ticks +/- 6 degrees around N/E/S/W labels
+            val arrowBoundaryRadius = radius + 5.dp.toPx()
+            val centerDotRadius = 11.5.dp.toPx()
+            val centerLineGapRadius = centerDotRadius + 1.0.dp.toPx()
 
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.1f * sensorAlpha),
-                        Color.Transparent
-                    ),
-                    center = center,
-                    radius = rimRadius + 14.dp.toPx()
-                ),
-                radius = rimRadius + 14.dp.toPx(),
-                center = center
-            )
-            drawCircle(
-                brush = Brush.sweepGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.52f * sensorAlpha),
-                        Color(0xFFC7D0DA).copy(alpha = 0.2f * sensorAlpha),
-                        Color.White.copy(alpha = 0.52f * sensorAlpha)
+            PerformanceProfiler.measure(name = "WindCompass/Dial/Ticks", category = "widget-draw") {
+                withTransform({
+                    rotate(degrees = dialRotation, pivot = center)
+                }) {
+                    drawImage(
+                        image = staticDialBitmap,
+                        topLeft = Offset.Zero,
+                        alpha = sensorAlpha
                     )
-                ),
-                radius = rimRadius,
-                center = center,
-                style = Stroke(width = 1.4.dp.toPx())
-            )
-            drawCircle(
-                color = Color.White.copy(alpha = 0.08f * sensorAlpha),
-                radius = radius + 1.2.dp.toPx(),
-                center = center,
-                style = Stroke(width = 0.9.dp.toPx())
-            )
+                }
+            }
 
             val labelPaint = Paint().apply {
                 isAntiAlias = true
@@ -594,236 +602,230 @@ private fun CompassDial(
             }
             val labelYOffset = -((labelPaint.fontMetrics.ascent + labelPaint.fontMetrics.descent) / 2f)
             val arrowBodyColor = Color.White.copy(alpha = 0.86f * sensorAlpha)
-            val arrowGlowColor = Color.White.copy(alpha = 0.22f * sensorAlpha)
             val arrowHeadColor = Color.White.copy(alpha = 0.95f * sensorAlpha)
             val arrowTailStrokeColor = arrowBodyColor
 
-            fun drawTick(
-                bearing: Float,
-                tickLength: Float,
-                tickThickness: Float,
-                tickColor: Color
-            ) {
-                val rotatedBearing = bearing + dialRotation
-                val angleRadians = Math.toRadians((rotatedBearing - 90f).toDouble())
-
-                val inner = radius - tickLength / 2f
-                val outer = radius + tickLength / 2f
-                drawLine(
-                    color = tickColor,
-                    start = Offset(
-                        x = center.x + inner * cos(angleRadians).toFloat(),
-                        y = center.y + inner * sin(angleRadians).toFloat()
-                    ),
-                    end = Offset(
-                        x = center.x + outer * cos(angleRadians).toFloat(),
-                        y = center.y + outer * sin(angleRadians).toFloat()
-                    ),
-                    strokeWidth = tickThickness,
-                    cap = StrokeCap.Round
-                )
-            }
-
-            repeat(tickCount) { index ->
-                val isCardinalLabelZone = cardinalIndices.any { cardinalIndex ->
-                    val distance = abs(index - cardinalIndex)
-                    minOf(distance, tickCount - distance) <= cardinalCutoutRadius
-                }
-                if (isCardinalLabelZone) return@repeat
-
-                val bearing = index * tickStep // 0=N, 90=E, 180=S, 270=W
-                val isCardinal = index % 30 == 0
-                val isMajor = index % 10 == 0
-                val tickLength = when {
-                    isCardinal -> 13.dp.toPx()
-                    isMajor -> 9.5.dp.toPx()
-                    else -> 5.8.dp.toPx()
-                }
-                val tickThickness = when {
-                    isCardinal -> 2.2.dp.toPx()
-                    isMajor -> 1.55.dp.toPx()
-                    else -> 1.1.dp.toPx()
-                }
-                val tickAlpha = when {
-                    isCardinal -> 0.74f
-                    isMajor -> 0.5f
-                    else -> 0.23f
-                } * sensorAlpha
-                drawTick(
-                    bearing = bearing,
-                    tickLength = tickLength,
-                    tickThickness = tickThickness,
-                    tickColor = Color.White.copy(alpha = tickAlpha)
-                )
-            }
-
             if (showArrow && headingDegrees != null) {
-                val bearing = animatedHeadingDegrees + dialRotation
-                val angleRadians = Math.toRadians((bearing - 90f).toDouble())
-                val unitX = cos(angleRadians).toFloat()
-                val unitY = sin(angleRadians).toFloat()
-                val perpX = -unitY
-                val perpY = unitX
+                PerformanceProfiler.measure(name = "WindCompass/Dial/Arrow", category = "widget-draw") {
+                    val bearing = animatedHeadingDegrees + dialRotation
+                    val angleRadians = Math.toRadians((bearing - 90f).toDouble())
+                    val unitX = cos(angleRadians).toFloat()
+                    val unitY = sin(angleRadians).toFloat()
+                    val perpX = -unitY
+                    val perpY = unitX
 
-                val headLength = 16.dp.toPx()
-                val headHalfWidth = 7.8.dp.toPx()
-                val bodyStroke = 3.1.dp.toPx()
-                val glowStroke = 7.2.dp.toPx()
-                val tailRadius = 6.2.dp.toPx()
-                val tailStroke = 2.4.dp.toPx()
+                    val headLength = 14.dp.toPx()
+                    val headHalfWidth = 6.5.dp.toPx()
+                    val bodyStroke = 2.6.dp.toPx()
+                    val tailRadius = 5.2.dp.toPx()
+                    val tailStroke = 2.0.dp.toPx()
 
-                val tip = Offset(
-                    x = center.x + arrowBoundaryRadius * unitX,
-                    y = center.y + arrowBoundaryRadius * unitY
-                )
-                val headBaseCenter = Offset(
-                    x = tip.x - headLength * unitX,
-                    y = tip.y - headLength * unitY
-                )
-                val headLeft = Offset(
-                    x = headBaseCenter.x + headHalfWidth * perpX,
-                    y = headBaseCenter.y + headHalfWidth * perpY
-                )
-                val headRight = Offset(
-                    x = headBaseCenter.x - headHalfWidth * perpX,
-                    y = headBaseCenter.y - headHalfWidth * perpY
-                )
-
-                val tailCenter = Offset(
-                    x = center.x - (arrowBoundaryRadius - tailRadius) * unitX,
-                    y = center.y - (arrowBoundaryRadius - tailRadius) * unitY
-                )
-                val bodyStart = Offset(
-                    x = tailCenter.x + tailRadius * unitX,
-                    y = tailCenter.y + tailRadius * unitY
-                )
-                val bodyEnd = Offset(
-                    x = headBaseCenter.x - 1.2.dp.toPx() * unitX,
-                    y = headBaseCenter.y - 1.2.dp.toPx() * unitY
-                )
-
-                val centerGapStart = Offset(
-                    x = center.x - centerLineGapRadius * unitX,
-                    y = center.y - centerLineGapRadius * unitY
-                )
-                val centerGapEnd = Offset(
-                    x = center.x + centerLineGapRadius * unitX,
-                    y = center.y + centerLineGapRadius * unitY
-                )
-
-                fun projection(point: Offset): Float {
-                    return (point.x - center.x) * unitX + (point.y - center.y) * unitY
-                }
-                val bodyStartT = projection(bodyStart)
-                val bodyEndT = projection(bodyEnd)
-                val gapStartT = projection(centerGapStart)
-                val gapEndT = projection(centerGapEnd)
-
-                if (bodyStartT < gapStartT - 0.5f) {
-                    drawLine(
-                        color = arrowGlowColor,
-                        start = bodyStart,
-                        end = centerGapStart,
-                        strokeWidth = glowStroke,
-                        cap = StrokeCap.Round
+                    val tip = Offset(
+                        x = center.x + arrowBoundaryRadius * unitX,
+                        y = center.y + arrowBoundaryRadius * unitY
                     )
-                    drawLine(
-                        color = arrowBodyColor,
-                        start = bodyStart,
-                        end = centerGapStart,
-                        strokeWidth = bodyStroke,
-                        cap = StrokeCap.Round
+                    val headBaseCenter = Offset(
+                        x = tip.x - headLength * unitX,
+                        y = tip.y - headLength * unitY
                     )
-                }
-                if (bodyEndT > gapEndT + 0.5f) {
-                    drawLine(
-                        color = arrowGlowColor,
-                        start = centerGapEnd,
-                        end = bodyEnd,
-                        strokeWidth = glowStroke,
-                        cap = StrokeCap.Round
+                    val headLeft = Offset(
+                        x = headBaseCenter.x + headHalfWidth * perpX,
+                        y = headBaseCenter.y + headHalfWidth * perpY
                     )
-                    drawLine(
-                        color = arrowBodyColor,
-                        start = centerGapEnd,
-                        end = bodyEnd,
-                        strokeWidth = bodyStroke,
-                        cap = StrokeCap.Round
+                    val headRight = Offset(
+                        x = headBaseCenter.x - headHalfWidth * perpX,
+                        y = headBaseCenter.y - headHalfWidth * perpY
                     )
-                }
 
-                val arrowHeadPath = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(tip.x, tip.y)
-                    lineTo(headLeft.x, headLeft.y)
-                    lineTo(headRight.x, headRight.y)
-                    close()
-                }
-                drawPath(
-                    path = arrowHeadPath,
-                    color = arrowGlowColor
-                )
-                drawPath(
-                    path = arrowHeadPath,
-                    color = arrowHeadColor
-                )
+                    val tailCenter = Offset(
+                        x = center.x - (arrowBoundaryRadius - tailRadius) * unitX,
+                        y = center.y - (arrowBoundaryRadius - tailRadius) * unitY
+                    )
+                    val bodyStart = Offset(
+                        x = tailCenter.x + tailRadius * unitX,
+                        y = tailCenter.y + tailRadius * unitY
+                    )
+                    val bodyEnd = Offset(
+                        x = headBaseCenter.x - 1.1.dp.toPx() * unitX,
+                        y = headBaseCenter.y - 1.1.dp.toPx() * unitY
+                    )
 
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.2f * sensorAlpha),
-                    radius = tailRadius * 0.62f,
-                    center = tailCenter
-                )
-                drawCircle(
-                    color = arrowTailStrokeColor,
-                    radius = tailRadius,
-                    center = tailCenter,
-                    style = Stroke(width = tailStroke)
-                )
+                    val centerGapStart = Offset(
+                        x = center.x - centerLineGapRadius * unitX,
+                        y = center.y - centerLineGapRadius * unitY
+                    )
+                    val centerGapEnd = Offset(
+                        x = center.x + centerLineGapRadius * unitX,
+                        y = center.y + centerLineGapRadius * unitY
+                    )
+
+                    fun projection(point: Offset): Float {
+                        return (point.x - center.x) * unitX + (point.y - center.y) * unitY
+                    }
+                    val bodyStartT = projection(bodyStart)
+                    val bodyEndT = projection(bodyEnd)
+                    val gapStartT = projection(centerGapStart)
+                    val gapEndT = projection(centerGapEnd)
+
+                    if (bodyStartT < gapStartT - 0.5f) {
+                        drawLine(
+                            color = arrowBodyColor,
+                            start = bodyStart,
+                            end = centerGapStart,
+                            strokeWidth = bodyStroke,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                    if (bodyEndT > gapEndT + 0.5f) {
+                        drawLine(
+                            color = arrowBodyColor,
+                            start = centerGapEnd,
+                            end = bodyEnd,
+                            strokeWidth = bodyStroke,
+                            cap = StrokeCap.Round
+                        )
+                    }
+
+                    val arrowHeadPath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(tip.x, tip.y)
+                        lineTo(headLeft.x, headLeft.y)
+                        lineTo(headRight.x, headRight.y)
+                        close()
+                    }
+                    drawPath(
+                        path = arrowHeadPath,
+                        color = arrowHeadColor
+                    )
+
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.16f * sensorAlpha),
+                        radius = tailRadius * 0.56f,
+                        center = tailCenter
+                    )
+                    drawCircle(
+                        color = arrowTailStrokeColor,
+                        radius = tailRadius,
+                        center = tailCenter,
+                        style = Stroke(width = tailStroke)
+                    )
+                }
             }
 
-            drawCircle(
-                color = Color.White.copy(alpha = centerPulseAlpha * sensorAlpha),
-                radius = centerGlassRadius,
-                center = center
-            )
-            drawCircle(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.34f * sensorAlpha),
-                        Color.White.copy(alpha = 0.08f * sensorAlpha)
-                    ),
-                    start = Offset(center.x - centerGlassRadius, center.y - centerGlassRadius),
-                    end = Offset(center.x + centerGlassRadius, center.y + centerGlassRadius)
-                ),
-                radius = centerGlassRadius,
-                center = center,
-                style = Stroke(width = 1.6.dp.toPx())
-            )
+            PerformanceProfiler.measure(name = "WindCompass/Dial/Center", category = "widget-draw") {
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.16f * sensorAlpha),
+                    radius = centerDotRadius,
+                    center = center
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.28f * sensorAlpha),
+                    radius = centerDotRadius,
+                    center = center,
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+            }
             val nativeCanvas = drawContext.canvas.nativeCanvas
 
             fun labelPoint(bearing: Float): Offset {
                 val angleRadians = Math.toRadians((bearing + dialRotation - 90f).toDouble())
                 return Offset(
-                    x = center.x + (radius - 2.4.dp.toPx()) * cos(angleRadians).toFloat(),
-                    y = center.y + (radius - 2.4.dp.toPx()) * sin(angleRadians).toFloat()
+                    x = center.x + (radius - 2.2.dp.toPx()) * cos(angleRadians).toFloat(),
+                    y = center.y + (radius - 2.2.dp.toPx()) * sin(angleRadians).toFloat()
                 )
             }
 
             fun drawCardinalLabel(text: String, bearing: Float, emphasize: Boolean = false) {
                 val point = labelPoint(bearing)
                 labelPaint.color = if (emphasize) {
-                    Color.White.copy(alpha = 0.96f * sensorAlpha).toArgb()
+                    Color.White.copy(alpha = 0.9f * sensorAlpha).toArgb()
                 } else {
-                    Color(0xFFD0D5DB).copy(alpha = 0.72f * sensorAlpha).toArgb()
+                    Color(0xFFD0D5DB).copy(alpha = 0.64f * sensorAlpha).toArgb()
                 }
                 nativeCanvas.drawText(text, point.x, point.y + labelYOffset, labelPaint)
             }
 
-            drawCardinalLabel("N", 0f, emphasize = true)
-            drawCardinalLabel("E", 90f)
-            drawCardinalLabel("S", 180f)
-            drawCardinalLabel("W", 270f)
+            PerformanceProfiler.measure(name = "WindCompass/Dial/Labels", category = "widget-draw") {
+                drawCardinalLabel("N", 0f, emphasize = true)
+                drawCardinalLabel("E", 90f)
+                drawCardinalLabel("S", 180f)
+                drawCardinalLabel("W", 270f)
+            }
         }
     }
+}
+
+private fun buildCompassDialStaticBitmap(
+    widthPx: Int,
+    heightPx: Int,
+    densityScale: Float,
+    tickCount: Int,
+    cardinalStep: Int,
+    cardinalCutoutRadius: Int
+): ImageBitmap {
+    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    val radius = (min(widthPx, heightPx) / 2f) - (9f * densityScale)
+    val rimRadius = radius + (7f * densityScale)
+    val tickStep = 360f / tickCount.toFloat()
+
+    val baseFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = android.graphics.Color.WHITE
+        alpha = (0.14f * 255f).roundToInt().coerceIn(0, 255)
+    }
+    val rimStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = android.graphics.Color.WHITE
+        alpha = (0.52f * 255f).roundToInt().coerceIn(0, 255)
+        strokeWidth = 1.3f * densityScale
+    }
+    val innerStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = android.graphics.Color.WHITE
+        alpha = (0.08f * 255f).roundToInt().coerceIn(0, 255)
+        strokeWidth = 0.9f * densityScale
+    }
+    canvas.drawCircle(centerX, centerY, rimRadius, baseFillPaint)
+    canvas.drawCircle(centerX, centerY, rimRadius, rimStrokePaint)
+    canvas.drawCircle(centerX, centerY, radius + (1.2f * densityScale), innerStrokePaint)
+
+    val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = android.graphics.Color.WHITE
+    }
+    repeat(tickCount) { index ->
+        val cardinalIndex = index % cardinalStep == 0
+        val nearCardinal = if (cardinalIndex) {
+            true
+        } else {
+            val nearestCardinalIndex = ((index + (cardinalStep / 2)) / cardinalStep) * cardinalStep
+            val distance = abs(index - nearestCardinalIndex)
+            minOf(distance, tickCount - distance) <= cardinalCutoutRadius
+        }
+        if (nearCardinal) return@repeat
+
+        val bearing = index * tickStep // 0=N, 90=E, 180=S, 270=W
+        val isMajor = index % (tickCount / 12) == 0
+        val tickLength = if (isMajor) 8.5f * densityScale else 5.2f * densityScale
+        val tickThickness = if (isMajor) 1.35f * densityScale else 1.0f * densityScale
+        val tickAlpha = if (isMajor) 0.46f else 0.2f
+        val angleRadians = Math.toRadians((bearing - 90f).toDouble())
+        val inner = radius - tickLength / 2f
+        val outer = radius + tickLength / 2f
+        val startX = centerX + inner * cos(angleRadians).toFloat()
+        val startY = centerY + inner * sin(angleRadians).toFloat()
+        val endX = centerX + outer * cos(angleRadians).toFloat()
+        val endY = centerY + outer * sin(angleRadians).toFloat()
+
+        tickPaint.strokeWidth = tickThickness
+        tickPaint.alpha = (tickAlpha * 255f).roundToInt().coerceIn(0, 255)
+        canvas.drawLine(startX, startY, endX, endY, tickPaint)
+    }
+
+    return bitmap.asImageBitmap()
 }
 
 @Composable

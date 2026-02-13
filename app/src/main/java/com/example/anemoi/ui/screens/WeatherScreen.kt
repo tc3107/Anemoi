@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +42,7 @@ import com.example.anemoi.ui.components.DynamicWeatherBackground
 import com.example.anemoi.ui.components.SearchBar
 import com.example.anemoi.ui.components.WeatherDetailsSheet
 import com.example.anemoi.ui.components.WeatherDisplay
+import com.example.anemoi.util.PerformanceProfiler
 import com.example.anemoi.util.WeatherDatasetKind
 import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.util.backgroundOverridePresetAt
@@ -85,6 +88,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     var overlayUsedMemMb by remember { mutableStateOf(0) }
     var overlayFreeMemMb by remember { mutableStateOf(0) }
     var overlayMaxMemMb by remember { mutableStateOf(0) }
+    var overlayProfilerSnapshot by remember {
+        mutableStateOf(PerformanceProfiler.Snapshot.Empty)
+    }
 
     var isReady by remember { mutableStateOf(false) }
 
@@ -152,9 +158,12 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     }
 
     LaunchedEffect(uiState.isPerformanceOverlayEnabled) {
+        PerformanceProfiler.setEnabled(uiState.isPerformanceOverlayEnabled)
         if (!uiState.isPerformanceOverlayEnabled) {
             overlayFps = 0
             overlayAvgFrameMs = 0f
+            overlayProfilerSnapshot = PerformanceProfiler.Snapshot.Empty
+            PerformanceProfiler.reset()
             return@LaunchedEffect
         }
 
@@ -175,7 +184,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     windowStartNs = nowNs
                 }
                 if (previousFrameNs != 0L) {
-                    frameDurationsNs += nowNs - previousFrameNs
+                    val frameDurationNs = nowNs - previousFrameNs
+                    frameDurationsNs += frameDurationNs
+                    PerformanceProfiler.recordFrameDuration(frameDurationNs)
                 }
                 previousFrameNs = nowNs
                 frameCount++
@@ -194,6 +205,7 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     overlayUsedMemMb = (usedBytes / (1024L * 1024L)).toInt()
                     overlayFreeMemMb = (freeBytes / (1024L * 1024L)).toInt()
                     overlayMaxMemMb = (runtime.maxMemory() / (1024L * 1024L)).toInt()
+                    overlayProfilerSnapshot = PerformanceProfiler.snapshot(windowMs = 10_000L, topN = 24)
 
                     frameCount = 0
                     frameDurationsNs = 0L
@@ -309,10 +321,26 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val overlayLocationLine = uiState.selectedLocation?.let { location ->
         "${location.name} (${String.format(Locale.US, "%.4f", location.lat)}, ${String.format(Locale.US, "%.4f", location.lon)})"
     } ?: "none"
+    val overlayFrameSnapshot = overlayProfilerSnapshot.frame
+    val overlayCategoriesSummary = overlayProfilerSnapshot.categories
+        .take(4)
+        .joinToString(separator = " | ") { category ->
+            "${category.category}:${formatOverlayPercent(category.sharePercent)}%"
+        }
     val overlayLines = buildList {
         add("PERFORMANCE")
         add("fps=$overlayFps frame=${formatFrameMs(overlayAvgFrameMs)}ms")
+        add(
+            "frame p95=${formatFrameMs(overlayFrameSnapshot.p95FrameMs)}ms " +
+                "max=${formatFrameMs(overlayFrameSnapshot.maxFrameMs)}ms " +
+                "j16=${formatOverlayPercent(overlayFrameSnapshot.jank16Percent)}% " +
+                "j33=${formatOverlayPercent(overlayFrameSnapshot.jank33Percent)}%"
+        )
         add("mem used=$overlayUsedMemMb MB free=$overlayFreeMemMb MB max=$overlayMaxMemMb MB")
+        add(
+            "profiled=${formatOverlayNsMs(overlayProfilerSnapshot.totalSectionNs)}ms " +
+                "window=${overlayProfilerSnapshot.windowMs / 1000L}s"
+        )
         add("page=${pagerState.currentPage + 1}/$totalPages settled=${pagerState.settledPage + 1}")
         add("loading=${uiState.isLoading} locating=${uiState.isLocating} follow=${uiState.isFollowMode}")
         add("settings=${uiState.isSettingsOpen} organizer=${uiState.isOrganizerMode}")
@@ -345,6 +373,24 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         }
         if (uiState.errors.isNotEmpty()) {
             add("errors=${uiState.errors.size} first=${uiState.errors.first()}")
+        }
+        if (overlayCategoriesSummary.isNotBlank()) {
+            add("category share: $overlayCategoriesSummary")
+        }
+        if (overlayProfilerSnapshot.sections.isEmpty()) {
+            add("top components: collecting...")
+        } else {
+            add("top component cost (10s window):")
+            overlayProfilerSnapshot.sections.take(12).forEachIndexed { index, section ->
+                add(
+                    "${index + 1}. ${section.name} " +
+                        "${formatOverlayPercent(section.sharePercent)}% " +
+                        "tot=${formatOverlayNsMs(section.totalNs)}ms " +
+                        "avg=${formatOverlayNsMs(section.averageNs)}ms " +
+                        "p95=${formatOverlayNsMs(section.p95Ns)}ms " +
+                        "n=${section.sampleCount}"
+                )
+            }
         }
     }
 
@@ -689,6 +735,14 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     .padding(start = 8.dp, top = 8.dp)
                     .zIndex(20f)
             )
+            ResourceDistributionOverlay(
+                snapshot = overlayProfilerSnapshot,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(end = 8.dp, top = 8.dp)
+                    .zIndex(20f)
+            )
         }
     }
 }
@@ -822,6 +876,307 @@ private fun PerformanceOverlay(
     }
 }
 
+@Composable
+private fun ResourceDistributionOverlay(
+    snapshot: PerformanceProfiler.Snapshot,
+    modifier: Modifier = Modifier
+) {
+    val categorySlices = remember(snapshot.categories, snapshot.totalSectionNs) {
+        buildCategorySlices(snapshot)
+    }
+    val topSections = remember(snapshot.sections) {
+        snapshot.sections.take(6)
+    }
+    val dialBreakdown = remember(snapshot.sections) {
+        buildDialBreakdownEntries(snapshot.sections)
+    }
+    val dialSlices = remember(dialBreakdown) {
+        dialBreakdown.map { entry ->
+            DistributionSlice(
+                label = entry.label,
+                percent = entry.percentOfDial,
+                color = entry.color
+            )
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .widthIn(min = 240.dp, max = 320.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xAA111822))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.22f),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "RESOURCE DISTRIBUTION",
+                color = Color.White.copy(alpha = 0.9f),
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp
+            )
+
+            if (snapshot.totalSectionNs <= 0L || topSections.isEmpty()) {
+                Text(
+                    text = "Collecting profiler samples...",
+                    color = Color.White.copy(alpha = 0.66f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp
+                )
+                return@Column
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CategoryPieChart(
+                    slices = categorySlices,
+                    modifier = Modifier.size(92.dp)
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    categorySlices.take(4).forEach { slice ->
+                        DistributionLegendRow(slice = slice)
+                    }
+                }
+            }
+
+            Text(
+                text = "Top Component Share",
+                color = Color.White.copy(alpha = 0.75f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            ComponentShareBar(sections = topSections)
+
+            topSections.take(3).forEachIndexed { index, section ->
+                DistributionSectionRow(
+                    label = compactProfilerLabel(section.name),
+                    percent = section.sharePercent,
+                    totalMs = formatOverlayNsMs(section.totalNs),
+                    color = profilerColorForKey(section.name, index)
+                )
+            }
+
+            if (dialBreakdown.isNotEmpty()) {
+                Text(
+                    text = "Dial Breakdown",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                SliceShareBar(slices = dialSlices)
+
+                dialBreakdown.take(4).forEach { entry ->
+                    DistributionSectionRow(
+                        label = "Dial/${entry.label}",
+                        percent = entry.percentOfDial,
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        color = entry.color
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class DistributionSlice(
+    val label: String,
+    val percent: Float,
+    val color: Color
+)
+
+@Composable
+private fun CategoryPieChart(
+    slices: List<DistributionSlice>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        if (slices.isEmpty()) return@Canvas
+        var startAngle = -90f
+        slices.forEach { slice ->
+            val sweep = (slice.percent.coerceIn(0f, 100f) / 100f) * 360f
+            if (sweep > 0f) {
+                drawArc(
+                    color = slice.color,
+                    startAngle = startAngle,
+                    sweepAngle = sweep,
+                    useCenter = true,
+                    topLeft = Offset.Zero,
+                    size = Size(size.width, size.height)
+                )
+                startAngle += sweep
+            }
+        }
+        drawCircle(
+            color = Color(0xAA111822),
+            radius = size.minDimension * 0.34f,
+            center = Offset(size.width / 2f, size.height / 2f)
+        )
+    }
+}
+
+@Composable
+private fun DistributionLegendRow(slice: DistributionSlice) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(slice.color)
+        )
+        Text(
+            text = compactProfilerLabel(slice.label),
+            color = Color.White.copy(alpha = 0.82f),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "${formatOverlayPercent(slice.percent)}%",
+            color = Color.White.copy(alpha = 0.78f),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp
+        )
+    }
+}
+
+@Composable
+private fun ComponentShareBar(
+    sections: List<PerformanceProfiler.SectionSnapshot>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+    ) {
+        var cursor = 0f
+        sections.forEachIndexed { index, section ->
+            val segmentWidth = (size.width * (section.sharePercent.coerceIn(0f, 100f) / 100f))
+                .coerceAtLeast(0f)
+            if (segmentWidth <= 0f) return@forEachIndexed
+            drawRect(
+                color = profilerColorForKey(section.name, index),
+                topLeft = Offset(cursor, 0f),
+                size = Size(segmentWidth, size.height)
+            )
+            cursor += segmentWidth
+            if (cursor >= size.width) return@forEachIndexed
+        }
+    }
+}
+
+@Composable
+private fun SliceShareBar(
+    slices: List<DistributionSlice>,
+    modifier: Modifier = Modifier
+) {
+    if (slices.isEmpty()) return
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+    ) {
+        var cursor = 0f
+        slices.forEach { slice ->
+            val segmentWidth = (size.width * (slice.percent.coerceIn(0f, 100f) / 100f))
+                .coerceAtLeast(0f)
+            if (segmentWidth <= 0f) return@forEach
+            drawRect(
+                color = slice.color,
+                topLeft = Offset(cursor, 0f),
+                size = Size(segmentWidth, size.height)
+            )
+            cursor += segmentWidth
+            if (cursor >= size.width) return@forEach
+        }
+    }
+}
+
+private data class DialBreakdownEntry(
+    val label: String,
+    val percentOfDial: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+@Composable
+private fun DistributionSectionRow(
+    label: String,
+    percent: Float,
+    totalMs: String,
+    color: Color
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                color = Color.White.copy(alpha = 0.84f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${formatOverlayPercent(percent)}% ($totalMs ms)",
+                color = Color.White.copy(alpha = 0.72f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color.White.copy(alpha = 0.1f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction = (percent / 100f).coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(color)
+            )
+        }
+    }
+}
+
 private fun hasFreshnessWarning(
     hasData: Boolean,
     updatedAtMs: Long,
@@ -861,3 +1216,94 @@ private fun formatFrameMs(frameMs: Float): String {
     if (frameMs <= 0f) return "-"
     return String.format(Locale.US, "%.1f", frameMs)
 }
+
+private fun formatOverlayNsMs(durationNs: Long): String {
+    if (durationNs <= 0L) return "-"
+    val frameMs = durationNs.toDouble() / 1_000_000.0
+    return String.format(Locale.US, "%.2f", frameMs)
+}
+
+private fun formatOverlayPercent(value: Float): String {
+    if (value <= 0f) return "0.0"
+    return String.format(Locale.US, "%.1f", value)
+}
+
+private fun buildCategorySlices(
+    snapshot: PerformanceProfiler.Snapshot
+): List<DistributionSlice> {
+    if (snapshot.totalSectionNs <= 0L || snapshot.categories.isEmpty()) {
+        return emptyList()
+    }
+
+    val slices = snapshot.categories
+        .take(6)
+        .mapIndexed { index, category ->
+            DistributionSlice(
+                label = category.category,
+                percent = category.sharePercent.coerceIn(0f, 100f),
+                color = profilerColorForKey(category.category, index)
+            )
+        }
+        .toMutableList()
+
+    val usedPercent = slices.sumOf { it.percent.toDouble() }.toFloat()
+    val remainder = (100f - usedPercent).coerceIn(0f, 100f)
+    if (remainder >= 0.25f) {
+        slices += DistributionSlice(
+            label = "other",
+            percent = remainder,
+            color = Color.White.copy(alpha = 0.28f)
+        )
+    }
+    return slices
+}
+
+private fun buildDialBreakdownEntries(
+    sections: List<PerformanceProfiler.SectionSnapshot>
+): List<DialBreakdownEntry> {
+    val dialSections = sections
+        .filter { section -> section.name.startsWith("WindCompass/Dial/") }
+        .sortedByDescending { it.totalNs }
+    if (dialSections.isEmpty()) return emptyList()
+
+    val totalDialNs = dialSections.sumOf { it.totalNs }
+    if (totalDialNs <= 0L) return emptyList()
+
+    return dialSections.take(8).mapIndexed { index, section ->
+        val label = section.name.substringAfter("WindCompass/Dial/")
+        val percent = (section.totalNs.toDouble() / totalDialNs.toDouble() * 100.0).toFloat()
+        DialBreakdownEntry(
+            label = label,
+            percentOfDial = percent,
+            totalNs = section.totalNs,
+            color = profilerColorForKey("dial/$label", index)
+        )
+    }
+}
+
+private fun compactProfilerLabel(label: String): String {
+    val parts = label.split("/")
+    return when {
+        parts.isEmpty() -> label
+        parts.size <= 2 -> label
+        else -> parts.takeLast(2).joinToString("/")
+    }
+}
+
+private fun profilerColorForKey(key: String, indexHint: Int): Color {
+    val palette = profilerPalette
+    if (palette.isEmpty()) return Color.White
+    val seed = (key.hashCode() and Int.MAX_VALUE) + indexHint
+    return palette[seed % palette.size]
+}
+
+private val profilerPalette = listOf(
+    Color(0xFF60A5FA),
+    Color(0xFF34D399),
+    Color(0xFFF59E0B),
+    Color(0xFFF472B6),
+    Color(0xFFA78BFA),
+    Color(0xFFF87171),
+    Color(0xFF22D3EE),
+    Color(0xFF84CC16)
+)

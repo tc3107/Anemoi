@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.anemoi.data.TempUnit
+import com.example.anemoi.util.PerformanceProfiler
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -153,143 +154,145 @@ fun TemperatureGraph(
                 }
                 .graphicsLayer(clip = false)
                 .drawWithContent {
-                    val l = leftPaddingDp.toPx()
-                    val r = rightPaddingDp.toPx()
-                    val t = topPaddingDp.toPx()
-                    val b = bottomPaddingDp.toPx()
-                    val w = size.width
-                    val h = size.height
-                    val drawW = w - l - r
-                    val drawH = h - t - b
+                    PerformanceProfiler.measure(name = "TemperatureGraph/HudLayer/Draw", category = "widget-draw") {
+                        val l = leftPaddingDp.toPx()
+                        val r = rightPaddingDp.toPx()
+                        val t = topPaddingDp.toPx()
+                        val b = bottomPaddingDp.toPx()
+                        val w = size.width
+                        val h = size.height
+                        val drawW = w - l - r
+                        val drawH = h - t - b
 
-                    // 1 & 2. Draw main content with fading effect using an internal layer.
-                    drawContext.canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
-                    
-                    drawContent()
+                        // 1 & 2. Draw main content with fading effect using an internal layer.
+                        drawContext.canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
 
-                    // Apply Fade to graph area tips
-                    val fadeWidth = 24.dp.toPx()
-                    if (w > 0f) {
-                        val leftFadeStart = (l / w).coerceIn(0f, 1f)
-                        val leftFadeEnd = ((l + fadeWidth) / w).coerceIn(0f, 1f)
-                        val rightFadeStart = ((w - r - fadeWidth) / w).coerceIn(0f, 1f)
-                        val rightFadeEnd = ((w - r) / w).coerceIn(0f, 1f)
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color.Transparent,
-                                    leftFadeStart to Color.Transparent,
-                                    leftFadeEnd to Color.Black,
-                                    rightFadeStart to Color.Black,
-                                    rightFadeEnd to Color.Transparent,
-                                    1.0f to Color.Transparent
+                        drawContent()
+
+                        // Apply Fade to graph area tips
+                        val fadeWidth = 24.dp.toPx()
+                        if (w > 0f) {
+                            val leftFadeStart = (l / w).coerceIn(0f, 1f)
+                            val leftFadeEnd = ((l + fadeWidth) / w).coerceIn(0f, 1f)
+                            val rightFadeStart = ((w - r - fadeWidth) / w).coerceIn(0f, 1f)
+                            val rightFadeEnd = ((w - r) / w).coerceIn(0f, 1f)
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    colorStops = arrayOf(
+                                        0.0f to Color.Transparent,
+                                        leftFadeStart to Color.Transparent,
+                                        leftFadeEnd to Color.Black,
+                                        rightFadeStart to Color.Black,
+                                        rightFadeEnd to Color.Transparent,
+                                        1.0f to Color.Transparent
+                                    )
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
+
+                        drawContext.canvas.restore()
+
+                        // 3. HUD Layer
+                        if (drawW > 0 && drawH > 0) {
+                            val minVal = dayTemps.minOrNull() ?: 0.0
+                            val maxVal = dayTemps.maxOrNull() ?: 0.0
+                            val dataRange = (maxVal - minVal).coerceAtLeast(1.0)
+                            val yMin = minVal - (dataRange * 0.35)
+                            val yMax = maxVal + (dataRange * 0.20)
+                            val yRange = yMax - yMin
+
+                            fun getYHUD(temp: Double): Float = t + (drawH - ((temp - yMin) / yRange * drawH)).toFloat()
+
+                            // Right-aligned Y-axis labels
+                            val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                            val labels = (0 until safeYAxisLabelCount).map { i ->
+                                val tempValue = yMin + (i / yAxisSteps.toFloat() * yRange)
+                                textMeasurer.measure(formatTempWithUnit(tempValue), labelStyle)
+                            }
+                            val alignRightX = l - yAxisLabelHorizontalGap.toPx()
+
+                            for (i in 0 until safeYAxisLabelCount) {
+                                val yPos = getYHUD(yMin + (i / yAxisSteps.toFloat() * yRange))
+                                val textLayout = labels[i]
+                                drawText(textLayout, topLeft = Offset(alignRightX - textLayout.size.width, yPos - textLayout.size.height / 2))
+                            }
+
+                            // Interaction Selected Value
+                            val fraction = if (isDragging && dragX != null) {
+                                (dragX!!.coerceIn(l, l + drawW) - l) / drawW
+                            } else {
+                                curF
+                            }
+                            val displayedTemp = if (isDragging && dragX != null) {
+                                getInterpolatedTemp(fraction)
+                            } else {
+                                currentTemp ?: getInterpolatedTemp(fraction)
+                            }
+
+                            val readingLabel = formatTempWithUnit(displayedTemp)
+                            val hr = (fraction * 24).toInt() % 24
+                            val min = ((fraction * 24 - hr) * 60).toInt()
+                            val clockLabel = String.format("%02d:%02d", hr, min)
+                            val hudRightX = w - rightPaddingDp.toPx()
+                            val widgetTopY = -widgetTopToGraphTopInset.toPx()
+                            val topGridLineY = t
+                            val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
+                            val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
+                            val baseGap = 6.dp.toPx()
+                            val baseReadingTextSizeSp = hudReadingTextSizeSp
+                            val baseClockTextSizeSp = hudClockTextSizeSp
+
+                            val baseReadingStyle = TextStyle(
+                                color = Color.White,
+                                fontSize = baseReadingTextSizeSp.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val baseClockStyle = TextStyle(
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = baseClockTextSizeSp.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+
+                            var readingLayout = textMeasurer.measure(readingLabel, baseReadingStyle)
+                            var timeLayout = textMeasurer.measure(clockLabel, baseClockStyle)
+                            var readingClockGap = baseGap
+                            var combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                            var maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+
+                            if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
+                                val scaleForHeight = availableHudHeight / maxTextHeight
+                                val scaleForWidth = availableHudWidth / combinedWidth
+                                val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
+                                val scaledReadingStyle = baseReadingStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
+                                val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
+                                readingLayout = textMeasurer.measure(readingLabel, scaledReadingStyle)
+                                timeLayout = textMeasurer.measure(clockLabel, scaledClockStyle)
+                                readingClockGap = baseGap * scale
+                                combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                                maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+                            }
+
+                            val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
+                            val rowStartX = hudRightX - combinedWidth
+                            val readingTop = hudCenterY - (readingLayout.size.height * 0.5f)
+                            val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
+
+                            drawText(
+                                readingLayout,
+                                topLeft = Offset(
+                                    rowStartX,
+                                    readingTop
                                 )
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    }
-                    
-                    drawContext.canvas.restore()
-
-                    // 3. HUD Layer
-                    if (drawW > 0 && drawH > 0) {
-                        val minVal = dayTemps.minOrNull() ?: 0.0
-                        val maxVal = dayTemps.maxOrNull() ?: 0.0
-                        val dataRange = (maxVal - minVal).coerceAtLeast(1.0)
-                        val yMin = minVal - (dataRange * 0.35)
-                        val yMax = maxVal + (dataRange * 0.20)
-                        val yRange = yMax - yMin
-
-                        fun getYHUD(temp: Double): Float = t + (drawH - ((temp - yMin) / yRange * drawH)).toFloat()
-
-                        // Right-aligned Y-axis labels
-                        val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                        val labels = (0 until safeYAxisLabelCount).map { i ->
-                            val tempValue = yMin + (i / yAxisSteps.toFloat() * yRange)
-                            textMeasurer.measure(formatTempWithUnit(tempValue), labelStyle)
-                        }
-                        val alignRightX = l - yAxisLabelHorizontalGap.toPx()
-
-                        for (i in 0 until safeYAxisLabelCount) {
-                            val yPos = getYHUD(yMin + (i / yAxisSteps.toFloat() * yRange))
-                            val textLayout = labels[i]
-                            drawText(textLayout, topLeft = Offset(alignRightX - textLayout.size.width, yPos - textLayout.size.height / 2))
-                        }
-
-                        // Interaction Selected Value
-                        val fraction = if (isDragging && dragX != null) {
-                            (dragX!!.coerceIn(l, l + drawW) - l) / drawW
-                        } else {
-                            curF
-                        }
-                        val displayedTemp = if (isDragging && dragX != null) {
-                            getInterpolatedTemp(fraction)
-                        } else {
-                            currentTemp ?: getInterpolatedTemp(fraction)
-                        }
-
-                        val readingLabel = formatTempWithUnit(displayedTemp)
-                        val hr = (fraction * 24).toInt() % 24
-                        val min = ((fraction * 24 - hr) * 60).toInt()
-                        val clockLabel = String.format("%02d:%02d", hr, min)
-                        val hudRightX = w - rightPaddingDp.toPx()
-                        val widgetTopY = -widgetTopToGraphTopInset.toPx()
-                        val topGridLineY = t
-                        val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
-                        val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
-                        val baseGap = 6.dp.toPx()
-                        val baseReadingTextSizeSp = hudReadingTextSizeSp
-                        val baseClockTextSizeSp = hudClockTextSizeSp
-
-                        val baseReadingStyle = TextStyle(
-                            color = Color.White,
-                            fontSize = baseReadingTextSizeSp.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        val baseClockStyle = TextStyle(
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = baseClockTextSizeSp.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        var readingLayout = textMeasurer.measure(readingLabel, baseReadingStyle)
-                        var timeLayout = textMeasurer.measure(clockLabel, baseClockStyle)
-                        var readingClockGap = baseGap
-                        var combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
-                        var maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
-
-                        if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
-                            val scaleForHeight = availableHudHeight / maxTextHeight
-                            val scaleForWidth = availableHudWidth / combinedWidth
-                            val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
-                            val scaledReadingStyle = baseReadingStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
-                            val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
-                            readingLayout = textMeasurer.measure(readingLabel, scaledReadingStyle)
-                            timeLayout = textMeasurer.measure(clockLabel, scaledClockStyle)
-                            readingClockGap = baseGap * scale
-                            combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
-                            maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
-                        }
-
-                        val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
-                        val rowStartX = hudRightX - combinedWidth
-                        val readingTop = hudCenterY - (readingLayout.size.height * 0.5f)
-                        val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
-
-                        drawText(
-                            readingLayout,
-                            topLeft = Offset(
-                                rowStartX,
-                                readingTop
                             )
-                        )
-                        drawText(
-                            timeLayout,
-                            topLeft = Offset(
-                                rowStartX + readingLayout.size.width + readingClockGap,
-                                clockTop
+                            drawText(
+                                timeLayout,
+                                topLeft = Offset(
+                                    rowStartX + readingLayout.size.width + readingClockGap,
+                                    clockTop
+                                )
                             )
-                        )
+                        }
                     }
                 }
         ) {

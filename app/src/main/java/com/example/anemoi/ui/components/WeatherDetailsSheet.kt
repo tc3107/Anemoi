@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.anemoi.util.PerformanceProfiler
 import com.example.anemoi.util.WeatherFreshnessConfig
 import com.example.anemoi.viewmodel.WeatherUiState
 import java.util.Calendar
@@ -65,22 +66,24 @@ fun WeatherDetailsSheet(
         val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
 
         val weather = remember(rawWeather, currentUpdatedAt, hourlyUpdatedAt, dailyUpdatedAt) {
-            val now = System.currentTimeMillis()
-            val currentUsable = rawWeather?.currentWeather != null &&
-                currentUpdatedAt > 0L &&
-                now - currentUpdatedAt <= staleServeWindowMs
-            val hourlyUsable = rawWeather?.hourly != null &&
-                hourlyUpdatedAt > 0L &&
-                now - hourlyUpdatedAt <= staleServeWindowMs
-            val dailyUsable = rawWeather?.daily != null &&
-                dailyUpdatedAt > 0L &&
-                now - dailyUpdatedAt <= staleServeWindowMs
+            PerformanceProfiler.measure(name = "WeatherDetailsSheet/DeriveUsableWeather", category = "ui-state") {
+                val now = System.currentTimeMillis()
+                val currentUsable = rawWeather?.currentWeather != null &&
+                    currentUpdatedAt > 0L &&
+                    now - currentUpdatedAt <= staleServeWindowMs
+                val hourlyUsable = rawWeather?.hourly != null &&
+                    hourlyUpdatedAt > 0L &&
+                    now - hourlyUpdatedAt <= staleServeWindowMs
+                val dailyUsable = rawWeather?.daily != null &&
+                    dailyUpdatedAt > 0L &&
+                    now - dailyUpdatedAt <= staleServeWindowMs
 
-            rawWeather?.copy(
-                currentWeather = if (currentUsable) rawWeather.currentWeather else null,
-                hourly = if (hourlyUsable) rawWeather.hourly else null,
-                daily = if (dailyUsable) rawWeather.daily else null
-            )
+                rawWeather?.copy(
+                    currentWeather = if (currentUsable) rawWeather.currentWeather else null,
+                    hourly = if (hourlyUsable) rawWeather.hourly else null,
+                    daily = if (dailyUsable) rawWeather.daily else null
+                )
+            }
         }
 
         val daily = weather?.daily

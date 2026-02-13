@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.anemoi.util.PerformanceProfiler
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -94,58 +95,60 @@ private fun SunRayLayer(style: BackgroundStyle) {
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val source = Offset(
-            x = size.width * rays.sourceXFraction,
-            y = size.height * rays.sourceYFraction
-        )
-        val coreAlpha = (rays.coreAlpha * pulse.value).coerceIn(0f, 1f)
-        val glowRadius = size.minDimension * rays.glowRadiusFraction
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    rays.color.copy(alpha = coreAlpha * 0.46f),
-                    Color.Transparent
-                ),
-                center = source,
-                radius = glowRadius
+        PerformanceProfiler.measure(name = "Background/SunRays/Draw", category = "background-draw") {
+            val source = Offset(
+                x = size.width * rays.sourceXFraction,
+                y = size.height * rays.sourceYFraction
             )
-        )
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = coreAlpha * 0.26f),
-                    Color.Transparent
-                ),
-                center = source,
-                radius = glowRadius * 1.45f
-            )
-        )
-
-        val fanStep = if (rays.rayCount <= 1) 0f else rays.fanSweepDegrees / (rays.rayCount - 1)
-        repeat(rays.rayCount) { index ->
-            val angleDeg = rays.fanStartDegrees + fanStep * index + sway.value
-            val angleRad = angleDeg * PI.toFloat() / 180f
-            val end = Offset(
-                x = source.x + cos(angleRad) * size.minDimension * rays.rayLengthFraction,
-                y = source.y + sin(angleRad) * size.minDimension * rays.rayLengthFraction
-            )
-            val widthScale = 1f - abs(index - (rays.rayCount - 1) * 0.5f) / rays.rayCount.toFloat()
-            val rayWidth = size.minDimension * rays.rayWidthFraction * (0.9f + widthScale * 0.8f)
-            drawLine(
-                brush = Brush.linearGradient(
+            val coreAlpha = (rays.coreAlpha * pulse.value).coerceIn(0f, 1f)
+            val glowRadius = size.minDimension * rays.glowRadiusFraction
+            drawRect(
+                brush = Brush.radialGradient(
                     colors = listOf(
-                        rays.color.copy(alpha = (rays.rayAlpha * pulse.value).coerceIn(0f, 1f)),
-                        rays.color.copy(alpha = (rays.rayAlpha * 0.35f * pulse.value).coerceIn(0f, 1f)),
+                        rays.color.copy(alpha = coreAlpha * 0.46f),
                         Color.Transparent
                     ),
-                    start = source,
-                    end = end
-                ),
-                start = source,
-                end = end,
-                strokeWidth = rayWidth,
-                cap = StrokeCap.Round
+                    center = source,
+                    radius = glowRadius
+                )
             )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = coreAlpha * 0.26f),
+                        Color.Transparent
+                    ),
+                    center = source,
+                    radius = glowRadius * 1.45f
+                )
+            )
+
+            val fanStep = if (rays.rayCount <= 1) 0f else rays.fanSweepDegrees / (rays.rayCount - 1)
+            repeat(rays.rayCount) { index ->
+                val angleDeg = rays.fanStartDegrees + fanStep * index + sway.value
+                val angleRad = angleDeg * PI.toFloat() / 180f
+                val end = Offset(
+                    x = source.x + cos(angleRad) * size.minDimension * rays.rayLengthFraction,
+                    y = source.y + sin(angleRad) * size.minDimension * rays.rayLengthFraction
+                )
+                val widthScale = 1f - abs(index - (rays.rayCount - 1) * 0.5f) / rays.rayCount.toFloat()
+                val rayWidth = size.minDimension * rays.rayWidthFraction * (0.9f + widthScale * 0.8f)
+                drawLine(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            rays.color.copy(alpha = (rays.rayAlpha * pulse.value).coerceIn(0f, 1f)),
+                            rays.color.copy(alpha = (rays.rayAlpha * 0.35f * pulse.value).coerceIn(0f, 1f)),
+                            Color.Transparent
+                        ),
+                        start = source,
+                        end = end
+                    ),
+                    start = source,
+                    end = end,
+                    strokeWidth = rayWidth,
+                    cap = StrokeCap.Round
+                )
+            }
         }
     }
 }
@@ -168,24 +171,26 @@ private fun AnimatedGradientSky(style: BackgroundStyle) {
             .fillMaxSize()
             .drawWithCache {
                 onDrawBehind {
-                    val dx = (shift.value - 0.5f) * size.width * 0.36f
-                    val dy = sin(shift.value * (2f * PI.toFloat())) * size.height * 0.08f
-                    drawRect(
-                        brush = Brush.linearGradient(
-                            colors = style.gradientColors,
-                            start = Offset(dx, dy),
-                            end = Offset(size.width + dx, size.height + dy)
-                        )
-                    )
-
-                    style.glowColor?.let { glow ->
+                    PerformanceProfiler.measure(name = "Background/Gradient/Draw", category = "background-draw") {
+                        val dx = (shift.value - 0.5f) * size.width * 0.36f
+                        val dy = sin(shift.value * (2f * PI.toFloat())) * size.height * 0.08f
                         drawRect(
-                            brush = Brush.radialGradient(
-                                colors = listOf(glow, Color.Transparent),
-                                center = Offset(size.width * 0.78f, size.height * 0.12f),
-                                radius = size.minDimension * 0.92f
+                            brush = Brush.linearGradient(
+                                colors = style.gradientColors,
+                                start = Offset(dx, dy),
+                                end = Offset(size.width + dx, size.height + dy)
                             )
                         )
+
+                        style.glowColor?.let { glow ->
+                            drawRect(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(glow, Color.Transparent),
+                                    center = Offset(size.width * 0.78f, size.height * 0.12f),
+                                    radius = size.minDimension * 0.92f
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -217,22 +222,24 @@ private fun FloatingBlob(blob: BlobSpec, key: Int) {
     val wave = ((sin(progress.value * (2f * PI.toFloat())) + 1f) * 0.5f).coerceIn(0f, 1f)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val radiusPx = blob.size.toPx() * 0.68f
-        val center = Offset(
-            x = blob.startX.toPx() + (blob.size.toPx() * 0.5f) + blob.driftX.toPx() * wave,
-            y = blob.startY.toPx() + (blob.size.toPx() * 0.5f) + blob.driftY.toPx() * wave
-        )
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    blob.color.copy(alpha = blob.alpha),
-                    blob.color.copy(alpha = blob.alpha * 0.52f),
-                    Color.Transparent
-                ),
-                center = center,
-                radius = radiusPx
+        PerformanceProfiler.measure(name = "Background/Blob/Draw", category = "background-draw") {
+            val radiusPx = blob.size.toPx() * 0.68f
+            val center = Offset(
+                x = blob.startX.toPx() + (blob.size.toPx() * 0.5f) + blob.driftX.toPx() * wave,
+                y = blob.startY.toPx() + (blob.size.toPx() * 0.5f) + blob.driftY.toPx() * wave
             )
-        )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        blob.color.copy(alpha = blob.alpha),
+                        blob.color.copy(alpha = blob.alpha * 0.52f),
+                        Color.Transparent
+                    ),
+                    center = center,
+                    radius = radiusPx
+                )
+            )
+        }
     }
 }
 
@@ -278,38 +285,40 @@ private fun WeatherParticleLayer(
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val width = size.width
-        val height = size.height
-        val cycle = progress.value
+        PerformanceProfiler.measure(name = "Background/Particles/Draw", category = "background-draw") {
+            val width = size.width
+            val height = size.height
+            val cycle = progress.value
 
-        particles.forEach { particle ->
-            when (mode) {
-                ParticleMode.SNOW -> {
-                    val y = ((particle.seedY + cycle * particle.speed) % 1f) * height
-                    val sway = sin(((cycle * 1.8f + particle.phase) * 2f * PI).toFloat()) * particle.drift
-                    val x = ((particle.seedX + sway).coerceIn(0f, 1f)) * width
-                    val alpha = (0.16f + particle.alpha * 0.5f).coerceIn(0f, 1f)
-                    drawCircle(
-                        color = Color.White.copy(alpha = alpha),
-                        radius = 1.35f + particle.size * 3.15f,
-                        center = Offset(x, y)
-                    )
+            particles.forEach { particle ->
+                when (mode) {
+                    ParticleMode.SNOW -> {
+                        val y = ((particle.seedY + cycle * particle.speed) % 1f) * height
+                        val sway = sin(((cycle * 1.8f + particle.phase) * 2f * PI).toFloat()) * particle.drift
+                        val x = ((particle.seedX + sway).coerceIn(0f, 1f)) * width
+                        val alpha = (0.16f + particle.alpha * 0.5f).coerceIn(0f, 1f)
+                        drawCircle(
+                            color = Color.White.copy(alpha = alpha),
+                            radius = 1.35f + particle.size * 3.15f,
+                            center = Offset(x, y)
+                        )
+                    }
+
+                    ParticleMode.STARS -> {
+                        val x = particle.seedX * width
+                        val y = particle.seedY * height * 0.72f
+                        val twinkle = abs(sin(((cycle * 2.2f + particle.phase) * 2f * PI).toFloat()))
+                        val alpha = (0.14f + twinkle * 0.55f).coerceIn(0f, 1f)
+                        drawCircle(
+                            color = Color.White.copy(alpha = alpha),
+                            radius = 0.8f + particle.size * 1.8f,
+                            center = Offset(x, y)
+                        )
+                    }
+
+                    ParticleMode.NONE -> Unit
+                    ParticleMode.RAIN -> Unit
                 }
-
-                ParticleMode.STARS -> {
-                    val x = particle.seedX * width
-                    val y = particle.seedY * height * 0.72f
-                    val twinkle = abs(sin(((cycle * 2.2f + particle.phase) * 2f * PI).toFloat()))
-                    val alpha = (0.14f + twinkle * 0.55f).coerceIn(0f, 1f)
-                    drawCircle(
-                        color = Color.White.copy(alpha = alpha),
-                        radius = 0.8f + particle.size * 1.8f,
-                        center = Offset(x, y)
-                    )
-                }
-
-                ParticleMode.NONE -> Unit
-                ParticleMode.RAIN -> Unit
             }
         }
     }
@@ -343,11 +352,13 @@ private fun LiveRainParticleLayer(
                     .coerceIn(1f / 240f, 1f / 20f)
                 lastFrameNs = nowNs
 
-                stepLiveRainSimulation(
-                    simulation = simulation,
-                    dtSec = dtSec,
-                    windSpeedKmh = latestWindSpeedKmh
-                )
+                PerformanceProfiler.measure(name = "Background/Rain/SimStep", category = "background-sim") {
+                    stepLiveRainSimulation(
+                        simulation = simulation,
+                        dtSec = dtSec,
+                        windSpeedKmh = latestWindSpeedKmh
+                    )
+                }
                 frameTick++
             }
         }
@@ -355,57 +366,59 @@ private fun LiveRainParticleLayer(
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         frameTick // Keep this draw scope subscribed to simulation frame updates.
-        val width = size.width
-        val height = size.height
+        PerformanceProfiler.measure(name = "Background/Rain/Draw", category = "background-draw") {
+            val width = size.width
+            val height = size.height
 
-        simulation.drops.forEach { drop ->
-            val x = drop.xNorm * width
-            val y = drop.yNorm * height
-            val velocityX = drop.vxNormPerSec * width
-            val velocityY = drop.vyNormPerSec * height
-            val velocityMagnitude = sqrt(
-                velocityX * velocityX + velocityY * velocityY
-            ).coerceAtLeast(1f)
-            val dirX = velocityX / velocityMagnitude
-            val dirY = velocityY / velocityMagnitude
+            simulation.drops.forEach { drop ->
+                val x = drop.xNorm * width
+                val y = drop.yNorm * height
+                val velocityX = drop.vxNormPerSec * width
+                val velocityY = drop.vyNormPerSec * height
+                val velocityMagnitude = sqrt(
+                    velocityX * velocityX + velocityY * velocityY
+                ).coerceAtLeast(1f)
+                val dirX = velocityX / velocityMagnitude
+                val dirY = velocityY / velocityMagnitude
 
-            val speedFactor = (velocityMagnitude / (height * 2.4f)).coerceIn(0.4f, 1.8f)
-            val streakLength = (drop.baseLengthNorm * height * speedFactor)
-                .coerceIn(8f, height * 0.28f)
-            val head = Offset(x, y)
-            val tail = Offset(
-                x = x - dirX * streakLength,
-                y = y - dirY * streakLength
-            )
-            val mid = Offset(
-                x = (head.x + tail.x) * 0.5f,
-                y = (head.y + tail.y) * 0.5f
-            )
+                val speedFactor = (velocityMagnitude / (height * 2.4f)).coerceIn(0.4f, 1.8f)
+                val streakLength = (drop.baseLengthNorm * height * speedFactor)
+                    .coerceIn(8f, height * 0.28f)
+                val head = Offset(x, y)
+                val tail = Offset(
+                    x = x - dirX * streakLength,
+                    y = y - dirY * streakLength
+                )
+                val mid = Offset(
+                    x = (head.x + tail.x) * 0.5f,
+                    y = (head.y + tail.y) * 0.5f
+                )
 
-            val pulse = 0.85f + 0.15f * sin(simulation.timeSec * 4.5f + drop.shimmerPhase)
-            val alpha = (drop.alpha * pulse).coerceIn(0.06f, 0.92f)
+                val pulse = 0.85f + 0.15f * sin(simulation.timeSec * 4.5f + drop.shimmerPhase)
+                val alpha = (drop.alpha * pulse).coerceIn(0.06f, 0.92f)
 
-            drawLine(
-                color = Color(0xFFB6D5FF).copy(alpha = alpha * 0.24f),
-                start = tail,
-                end = head,
-                strokeWidth = drop.thickness * 2f,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = Color.White.copy(alpha = alpha),
-                start = tail,
-                end = head,
-                strokeWidth = drop.thickness,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = Color(0xFFEAF5FF).copy(alpha = (alpha * 1.06f).coerceAtMost(1f)),
-                start = mid,
-                end = head,
-                strokeWidth = (drop.thickness * 0.62f).coerceAtLeast(0.7f),
-                cap = StrokeCap.Round
-            )
+                drawLine(
+                    color = Color(0xFFB6D5FF).copy(alpha = alpha * 0.24f),
+                    start = tail,
+                    end = head,
+                    strokeWidth = drop.thickness * 2f,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color.White.copy(alpha = alpha),
+                    start = tail,
+                    end = head,
+                    strokeWidth = drop.thickness,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFFEAF5FF).copy(alpha = (alpha * 1.06f).coerceAtMost(1f)),
+                    start = mid,
+                    end = head,
+                    strokeWidth = (drop.thickness * 0.62f).coerceAtLeast(0.7f),
+                    cap = StrokeCap.Round
+                )
+            }
         }
     }
 }
@@ -428,12 +441,14 @@ private fun NoiseLayer(alpha: Float) {
                 val alphas = List(densityFactor) { (0.2f + random.nextFloat() * 0.8f) * alpha }
 
                 onDrawBehind {
-                    points.forEachIndexed { index, point ->
-                        drawCircle(
-                            color = Color.White.copy(alpha = alphas[index].coerceIn(0f, 1f)),
-                            radius = radii[index],
-                            center = point
-                        )
+                    PerformanceProfiler.measure(name = "Background/Noise/Draw", category = "background-draw") {
+                        points.forEachIndexed { index, point ->
+                            drawCircle(
+                                color = Color.White.copy(alpha = alphas[index].coerceIn(0f, 1f)),
+                                radius = radii[index],
+                                center = point
+                            )
+                        }
                     }
                 }
             }
