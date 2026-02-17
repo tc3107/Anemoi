@@ -53,7 +53,6 @@ fun SearchBar(
     isLocating: Boolean,
     isFollowMode: Boolean,
     hasErrors: Boolean,
-    hasWarnings: Boolean,
     onLocateClick: () -> Unit,
     onLocateLongClick: () -> Unit,
     tintAlpha: Float = 0.15f,
@@ -257,7 +256,6 @@ fun SearchBar(
                         contentDescription = "Settings",
                         tint = when {
                             hasErrors -> Color.Red
-                            hasWarnings -> Color(0xFFFFC857)
                             else -> Color.White
                         }
                     )

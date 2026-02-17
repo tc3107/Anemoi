@@ -228,40 +228,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val currentBlurStrength = if (uiState.customValuesEnabled) uiState.sheetBlurStrength else 16f
     val textAlpha = if (uiState.customValuesEnabled) uiState.textAlpha else 0.8f
     val statusBarInsetTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val warningStaleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
-    val warningCurrentThresholdMs = WeatherFreshnessConfig.CURRENT_THRESHOLD_MS
-    val warningHourlyThresholdMs = WeatherFreshnessConfig.HOURLY_THRESHOLD_MS
-    val warningDailyThresholdMs = WeatherFreshnessConfig.DAILY_THRESHOLD_MS
-    val warningNow = System.currentTimeMillis()
-    val warningKey = uiState.selectedLocation?.let { "${it.lat},${it.lon}" }
-    val warningSignatureMismatch = warningKey != null &&
-        uiState.cacheSignatureMap[warningKey] != uiState.activeRequestSignature
-    val warningWeather = warningKey?.let { uiState.weatherMap[it] }
-    val warningCurrentUpdatedAt = warningKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
-    val warningHourlyUpdatedAt = warningKey?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
-    val warningDailyUpdatedAt = warningKey?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
-    val hasWeatherWarnings = warningSignatureMismatch ||
-        hasFreshnessWarning(
-            hasData = warningWeather?.currentWeather != null,
-            updatedAtMs = warningCurrentUpdatedAt,
-            nowMs = warningNow,
-            thresholdMs = warningCurrentThresholdMs,
-            staleServeWindowMs = warningStaleServeWindowMs
-        ) ||
-        hasFreshnessWarning(
-            hasData = warningWeather?.hourly != null,
-            updatedAtMs = warningHourlyUpdatedAt,
-            nowMs = warningNow,
-            thresholdMs = warningHourlyThresholdMs,
-            staleServeWindowMs = warningStaleServeWindowMs
-        ) ||
-        hasFreshnessWarning(
-            hasData = warningWeather?.daily != null,
-            updatedAtMs = warningDailyUpdatedAt,
-            nowMs = warningNow,
-            thresholdMs = warningDailyThresholdMs,
-            staleServeWindowMs = warningStaleServeWindowMs
-        )
 
     fun locationKey(location: LocationItem?): String? = location?.let { "${it.lat},${it.lon}" }
 
@@ -394,7 +360,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 isLocating = uiState.isLocating,
                                 isFollowMode = uiState.isFollowMode,
                                 hasErrors = uiState.errors.isNotEmpty(),
-                                hasWarnings = hasWeatherWarnings,
                                 tintAlpha = currentTintAlpha,
                                 blurStrength = currentBlurStrength,
                                 onLocateClick = {
