@@ -309,7 +309,7 @@ fun DailyForecastWidget(
                                 painter = painterResource(id = iconResId),
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
-                                colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                                colorFilter = ColorFilter.tint(Color.White)
                             )
                         } else {
                             Box(
@@ -726,7 +726,7 @@ private fun DailyConditionTile(
                         painter = painterResource(id = iconResId),
                         contentDescription = null,
                         modifier = Modifier.size(scaledIconSize),
-                        colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                        colorFilter = ColorFilter.tint(Color.White)
                     )
                 } else {
                     val fallbackDotSize = (scaledIconSize * 0.22f).coerceAtLeast(4.dp)

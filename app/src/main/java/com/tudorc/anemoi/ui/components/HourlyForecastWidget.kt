@@ -332,7 +332,7 @@ fun HourlyForecastWidget(
                                                         painter = painterResource(id = iconResId),
                                                         contentDescription = null,
                                                         modifier = Modifier.fillMaxSize(),
-                                                        colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                                                        colorFilter = ColorFilter.tint(Color.White)
                                                     )
                                                 } else {
                                                     FallbackCircle()
