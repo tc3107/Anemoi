@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.tudorc.anemoi"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.tudorc.anemoi"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = providers.gradleProperty("APP_VERSION_CODE").get().toInt()
         versionName = providers.gradleProperty("APP_VERSION_NAME").get()
 
@@ -40,7 +40,6 @@ android {
     }
     lint {
         disable += setOf(
-            "OldTargetApi",
             "GradleDependency",
             "NewerVersionAvailable",
             "AndroidGradlePluginVersion"
