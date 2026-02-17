@@ -47,11 +47,11 @@ fun WeatherDetailsSheet(
     uiState: WeatherUiState,
     handleHeight: Dp,
     onHandleClick: () -> Unit,
+    modifier: Modifier = Modifier,
     isExpanded: Boolean = false,
     showHandle: Boolean = true,
     resetScrollKey: Any? = null,
-    headerContent: (@Composable () -> Unit)? = null,
-    modifier: Modifier = Modifier
+    headerContent: (@Composable () -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
     val detailsScrollState = rememberScrollState()

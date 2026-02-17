@@ -33,6 +33,7 @@ fun TemperatureGraph(
     currentTemp: Double?,
     currentTimeIso: String?,
     tempUnit: TempUnit,
+    modifier: Modifier = Modifier,
     widgetTopToGraphTopInset: Dp = 24.dp,
     yAxisLabelCount: Int = 6,
     showXAxisLabels: Boolean = true,
@@ -40,8 +41,7 @@ fun TemperatureGraph(
     showCurrentTimeDot: Boolean = true,
     hudReadingTextSizeSp: Float = 14f,
     hudClockTextSizeSp: Float = 12f,
-    yAxisLabelHorizontalGap: Dp = 8.dp,
-    modifier: Modifier = Modifier
+    yAxisLabelHorizontalGap: Dp = 8.dp
 ) {
     val haptic = LocalHapticFeedback.current
     val textMeasurer = rememberTextMeasurer()

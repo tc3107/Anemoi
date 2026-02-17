@@ -47,9 +47,9 @@ import kotlin.random.Random
 fun DynamicWeatherBackground(
     weatherCode: Int?,
     weatherTimeIso: String?,
+    modifier: Modifier = Modifier,
     windSpeedKmh: Double = 0.0,
-    pageKey: Any? = null,
-    modifier: Modifier = Modifier
+    pageKey: Any? = null
 ) {
     val style = remember(weatherCode, weatherTimeIso) {
         resolveBackgroundStyle(

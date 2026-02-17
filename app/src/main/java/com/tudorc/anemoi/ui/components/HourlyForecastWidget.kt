@@ -49,9 +49,9 @@ fun HourlyForecastWidget(
     times: List<String>,
     weatherCodes: List<Int>,
     temperatures: List<Double>,
-    currentTimeIso: String? = null,
     tempUnit: TempUnit,
     modifier: Modifier = Modifier,
+    currentTimeIso: String? = null,
     isExpanded: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current

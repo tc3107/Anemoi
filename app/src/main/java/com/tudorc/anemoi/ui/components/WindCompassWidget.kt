@@ -70,8 +70,8 @@ fun WindCompassWidget(
     gustSpeedKmh: Double?,
     maxGustKmh: Double?,
     unit: WindUnit,
-    lockDialToNorth: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lockDialToNorth: Boolean = false
 ) {
     val windSpeedText = formatSpeedWithUnit(windSpeedKmh, unit)
     val headingText = windDirectionDegrees?.let { formatBearing(it) } ?: "--"

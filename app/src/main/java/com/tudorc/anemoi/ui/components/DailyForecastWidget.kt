@@ -85,14 +85,14 @@ fun DailyForecastWidget(
     minTemperatures: List<Double>,
     maxTemperatures: List<Double>,
     precipitationProbabilityMax: List<Double>,
+    tempUnit: TempUnit,
+    modifier: Modifier = Modifier,
     hourlyTimes: List<String> = emptyList(),
     hourlyWeatherCodes: List<Int> = emptyList(),
     hourlyTemperatures: List<Double> = emptyList(),
     hourlyPrecipitationProbabilities: List<Int> = emptyList(),
     hourlyPrecipitations: List<Double> = emptyList(),
-    currentTimeIso: String? = null,
-    tempUnit: TempUnit,
-    modifier: Modifier = Modifier
+    currentTimeIso: String? = null
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
