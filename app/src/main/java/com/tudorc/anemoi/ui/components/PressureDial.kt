@@ -74,7 +74,7 @@ fun PressureDial(
             
             val currentAngle = if (progress != null) startAngle + progress * totalSweep else null
 
-            val tickColor = Color(0xFFC9CED5).copy(alpha = 0.24f)
+            val tickColor = Color.White.copy(alpha = 0.32f)
 
             // Draw all regular ticks
             for (i in 0..numTicks) {

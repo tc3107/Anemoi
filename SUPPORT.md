@@ -2,9 +2,8 @@
 
 ## Getting Help
 
-- For bugs: open a GitHub issue using the bug template.
+- For bugs: open a GitHub issue.
 - For feature requests: open a GitHub issue using the feature template.
-- For security issues: see `SECURITY.md` and report privately.
 
 ## Before Opening an Issue
 
