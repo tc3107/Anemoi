@@ -90,7 +90,7 @@ fun UVIndexWidget(
                         topLeft = Offset(centerX - radius, centerY - radius),
                         size = Size(radius * 2, radius * 2),
                         style = Stroke(width = width, cap = StrokeCap.Butt),
-                        alpha = 0.35f * alphaFactor
+                        alpha = 0.42f * alphaFactor
                     )
                 }
             }
@@ -115,7 +115,7 @@ fun UVIndexWidget(
                 // Helper to draw the highlight with side blur
                 fun drawHighlightLayers(width: Float, alphaFactor: Float) {
                     drawArc(
-                        color = Color.White.copy(alpha = 0.4f * alphaFactor),
+                        color = Color.White.copy(alpha = 0.46f * alphaFactor),
                         startAngle = sectionStartAngle,
                         sweepAngle = sectionSweep,
                         useCenter = false,
