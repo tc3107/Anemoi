@@ -3,6 +3,7 @@ package com.example.anemoi.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -580,15 +581,22 @@ private fun CompassDial(
                 )
             }
         }
+        val staticArrowBitmap = remember(widthPx, heightPx, densityScale) {
+            PerformanceProfiler.measure(name = "WindCompass/Dial/ArrowBitmapBuild", category = "widget-cache") {
+                buildCompassArrowBitmap(
+                    widthPx = widthPx,
+                    heightPx = heightPx,
+                    densityScale = densityScale
+                )
+            }
+        }
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = (size.minDimension / 2f) - 9.dp.toPx()
             val dialRotation = normalizeDegrees(dialRotationDegrees)
             val sensorAlpha = if (hasSensorData) 1f else 0.58f
-            val arrowBoundaryRadius = radius + 5.dp.toPx()
             val centerDotRadius = 11.5.dp.toPx()
-            val centerLineGapRadius = centerDotRadius + 1.0.dp.toPx()
 
             PerformanceProfiler.measure(name = "WindCompass/Dial/Ticks", category = "widget-draw") {
                 withTransform({
@@ -602,120 +610,18 @@ private fun CompassDial(
                 }
             }
 
-            val labelPaint = Paint().apply {
-                isAntiAlias = true
-                textAlign = Paint.Align.CENTER
-                textSize = 10.5.sp.toPx()
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-            val labelYOffset = -((labelPaint.fontMetrics.ascent + labelPaint.fontMetrics.descent) / 2f)
-            val arrowBodyColor = Color.White.copy(alpha = 0.86f * sensorAlpha)
-            val arrowHeadColor = Color.White.copy(alpha = 0.95f * sensorAlpha)
-            val arrowTailStrokeColor = arrowBodyColor
-
             if (showArrow && headingDegrees != null) {
                 PerformanceProfiler.measure(name = "WindCompass/Dial/Arrow", category = "widget-draw") {
                     val bearing = animatedHeadingDegrees + dialRotation
-                    val angleRadians = Math.toRadians((bearing - 90f).toDouble())
-                    val unitX = cos(angleRadians).toFloat()
-                    val unitY = sin(angleRadians).toFloat()
-                    val perpX = -unitY
-                    val perpY = unitX
-
-                    val headLength = 14.dp.toPx()
-                    val headHalfWidth = 6.5.dp.toPx()
-                    val bodyStroke = 2.6.dp.toPx()
-                    val tailRadius = 5.2.dp.toPx()
-                    val tailStroke = 2.0.dp.toPx()
-
-                    val tip = Offset(
-                        x = center.x + arrowBoundaryRadius * unitX,
-                        y = center.y + arrowBoundaryRadius * unitY
-                    )
-                    val headBaseCenter = Offset(
-                        x = tip.x - headLength * unitX,
-                        y = tip.y - headLength * unitY
-                    )
-                    val headLeft = Offset(
-                        x = headBaseCenter.x + headHalfWidth * perpX,
-                        y = headBaseCenter.y + headHalfWidth * perpY
-                    )
-                    val headRight = Offset(
-                        x = headBaseCenter.x - headHalfWidth * perpX,
-                        y = headBaseCenter.y - headHalfWidth * perpY
-                    )
-
-                    val tailCenter = Offset(
-                        x = center.x - (arrowBoundaryRadius - tailRadius) * unitX,
-                        y = center.y - (arrowBoundaryRadius - tailRadius) * unitY
-                    )
-                    val bodyStart = Offset(
-                        x = tailCenter.x + tailRadius * unitX,
-                        y = tailCenter.y + tailRadius * unitY
-                    )
-                    val bodyEnd = Offset(
-                        x = headBaseCenter.x - 1.1.dp.toPx() * unitX,
-                        y = headBaseCenter.y - 1.1.dp.toPx() * unitY
-                    )
-
-                    val centerGapStart = Offset(
-                        x = center.x - centerLineGapRadius * unitX,
-                        y = center.y - centerLineGapRadius * unitY
-                    )
-                    val centerGapEnd = Offset(
-                        x = center.x + centerLineGapRadius * unitX,
-                        y = center.y + centerLineGapRadius * unitY
-                    )
-
-                    fun projection(point: Offset): Float {
-                        return (point.x - center.x) * unitX + (point.y - center.y) * unitY
-                    }
-                    val bodyStartT = projection(bodyStart)
-                    val bodyEndT = projection(bodyEnd)
-                    val gapStartT = projection(centerGapStart)
-                    val gapEndT = projection(centerGapEnd)
-
-                    if (bodyStartT < gapStartT - 0.5f) {
-                        drawLine(
-                            color = arrowBodyColor,
-                            start = bodyStart,
-                            end = centerGapStart,
-                            strokeWidth = bodyStroke,
-                            cap = StrokeCap.Round
+                    withTransform({
+                        rotate(degrees = bearing, pivot = center)
+                    }) {
+                        drawImage(
+                            image = staticArrowBitmap,
+                            topLeft = Offset.Zero,
+                            alpha = sensorAlpha
                         )
                     }
-                    if (bodyEndT > gapEndT + 0.5f) {
-                        drawLine(
-                            color = arrowBodyColor,
-                            start = centerGapEnd,
-                            end = bodyEnd,
-                            strokeWidth = bodyStroke,
-                            cap = StrokeCap.Round
-                        )
-                    }
-
-                    val arrowHeadPath = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(tip.x, tip.y)
-                        lineTo(headLeft.x, headLeft.y)
-                        lineTo(headRight.x, headRight.y)
-                        close()
-                    }
-                    drawPath(
-                        path = arrowHeadPath,
-                        color = arrowHeadColor
-                    )
-
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.16f * sensorAlpha),
-                        radius = tailRadius * 0.56f,
-                        center = tailCenter
-                    )
-                    drawCircle(
-                        color = arrowTailStrokeColor,
-                        radius = tailRadius,
-                        center = tailCenter,
-                        style = Stroke(width = tailStroke)
-                    )
                 }
             }
 
@@ -731,32 +637,6 @@ private fun CompassDial(
                     center = center,
                     style = Stroke(width = 1.2.dp.toPx())
                 )
-            }
-            val nativeCanvas = drawContext.canvas.nativeCanvas
-
-            fun labelPoint(bearing: Float): Offset {
-                val angleRadians = Math.toRadians((bearing + dialRotation - 90f).toDouble())
-                return Offset(
-                    x = center.x + (radius - 2.2.dp.toPx()) * cos(angleRadians).toFloat(),
-                    y = center.y + (radius - 2.2.dp.toPx()) * sin(angleRadians).toFloat()
-                )
-            }
-
-            fun drawCardinalLabel(text: String, bearing: Float, emphasize: Boolean = false) {
-                val point = labelPoint(bearing)
-                labelPaint.color = if (emphasize) {
-                    Color.White.copy(alpha = 0.9f * sensorAlpha).toArgb()
-                } else {
-                    Color(0xFFD0D5DB).copy(alpha = 0.64f * sensorAlpha).toArgb()
-                }
-                nativeCanvas.drawText(text, point.x, point.y + labelYOffset, labelPaint)
-            }
-
-            PerformanceProfiler.measure(name = "WindCompass/Dial/Labels", category = "widget-draw") {
-                drawCardinalLabel("N", 0f, emphasize = true)
-                drawCardinalLabel("E", 90f)
-                drawCardinalLabel("S", 180f)
-                drawCardinalLabel("W", 270f)
             }
         }
     }
@@ -832,6 +712,125 @@ private fun buildCompassDialStaticBitmap(
         tickPaint.alpha = (tickAlpha * 255f).roundToInt().coerceIn(0, 255)
         canvas.drawLine(startX, startY, endX, endY, tickPaint)
     }
+
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = 10.5f * densityScale
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val labelYOffset = -((labelPaint.fontMetrics.ascent + labelPaint.fontMetrics.descent) / 2f)
+    val labelRadius = radius - (2.2f * densityScale)
+    fun drawCardinalLabel(text: String, bearing: Float, emphasize: Boolean = false) {
+        val angleRadians = Math.toRadians((bearing - 90f).toDouble())
+        val pointX = centerX + labelRadius * cos(angleRadians).toFloat()
+        val pointY = centerY + labelRadius * kotlin.math.sin(angleRadians).toFloat()
+        labelPaint.color = if (emphasize) {
+            Color.White.copy(alpha = 0.9f).toArgb()
+        } else {
+            Color(0xFFD0D5DB).copy(alpha = 0.64f).toArgb()
+        }
+        canvas.drawText(text, pointX, pointY + labelYOffset, labelPaint)
+    }
+    drawCardinalLabel("N", 0f, emphasize = true)
+    drawCardinalLabel("E", 90f)
+    drawCardinalLabel("S", 180f)
+    drawCardinalLabel("W", 270f)
+
+    return bitmap.asImageBitmap()
+}
+
+private fun buildCompassArrowBitmap(
+    widthPx: Int,
+    heightPx: Int,
+    densityScale: Float
+): ImageBitmap {
+    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    val radius = (min(widthPx, heightPx) / 2f) - (9f * densityScale)
+    val arrowBoundaryRadius = radius + (5f * densityScale)
+    val centerDotRadius = 11.5f * densityScale
+    val centerLineGapRadius = centerDotRadius + (1.0f * densityScale)
+
+    val unitX = 0f
+    val unitY = -1f
+    val perpX = -unitY
+    val perpY = unitX
+
+    val headLength = 14f * densityScale
+    val headHalfWidth = 6.5f * densityScale
+    val bodyStroke = 2.6f * densityScale
+    val tailRadius = 5.2f * densityScale
+    val tailStroke = 2.0f * densityScale
+    val headInset = 1.1f * densityScale
+
+    val tipX = centerX + (arrowBoundaryRadius * unitX)
+    val tipY = centerY + (arrowBoundaryRadius * unitY)
+    val headBaseCenterX = tipX - (headLength * unitX)
+    val headBaseCenterY = tipY - (headLength * unitY)
+    val headLeftX = headBaseCenterX + (headHalfWidth * perpX)
+    val headLeftY = headBaseCenterY + (headHalfWidth * perpY)
+    val headRightX = headBaseCenterX - (headHalfWidth * perpX)
+    val headRightY = headBaseCenterY - (headHalfWidth * perpY)
+
+    val tailCenterX = centerX - ((arrowBoundaryRadius - tailRadius) * unitX)
+    val tailCenterY = centerY - ((arrowBoundaryRadius - tailRadius) * unitY)
+    val bodyStartX = tailCenterX + (tailRadius * unitX)
+    val bodyStartY = tailCenterY + (tailRadius * unitY)
+    val bodyEndX = headBaseCenterX - (headInset * unitX)
+    val bodyEndY = headBaseCenterY - (headInset * unitY)
+
+    val centerGapStartX = centerX - (centerLineGapRadius * unitX)
+    val centerGapStartY = centerY - (centerLineGapRadius * unitY)
+    val centerGapEndX = centerX + (centerLineGapRadius * unitX)
+    val centerGapEndY = centerY + (centerLineGapRadius * unitY)
+
+    fun projection(pointX: Float, pointY: Float): Float {
+        return (pointX - centerX) * unitX + (pointY - centerY) * unitY
+    }
+    val bodyStartT = projection(bodyStartX, bodyStartY)
+    val bodyEndT = projection(bodyEndX, bodyEndY)
+    val gapStartT = projection(centerGapStartX, centerGapStartY)
+    val gapEndT = projection(centerGapEndX, centerGapEndY)
+
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = bodyStroke
+        color = AndroidColor.argb((0.86f * 255f).roundToInt().coerceIn(0, 255), 255, 255, 255)
+    }
+    if (bodyStartT < gapStartT - 0.5f) {
+        canvas.drawLine(bodyStartX, bodyStartY, centerGapStartX, centerGapStartY, bodyPaint)
+    }
+    if (bodyEndT > gapEndT + 0.5f) {
+        canvas.drawLine(centerGapEndX, centerGapEndY, bodyEndX, bodyEndY, bodyPaint)
+    }
+
+    val headPath = android.graphics.Path().apply {
+        moveTo(tipX, tipY)
+        lineTo(headLeftX, headLeftY)
+        lineTo(headRightX, headRightY)
+        close()
+    }
+    val headPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = AndroidColor.argb((0.95f * 255f).roundToInt().coerceIn(0, 255), 255, 255, 255)
+    }
+    canvas.drawPath(headPath, headPaint)
+
+    val tailFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = AndroidColor.argb((0.16f * 255f).roundToInt().coerceIn(0, 255), 255, 255, 255)
+    }
+    canvas.drawCircle(tailCenterX, tailCenterY, tailRadius * 0.56f, tailFillPaint)
+
+    val tailStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = tailStroke
+        color = AndroidColor.argb((0.86f * 255f).roundToInt().coerceIn(0, 255), 255, 255, 255)
+    }
+    canvas.drawCircle(tailCenterX, tailCenterY, tailRadius, tailStrokePaint)
 
     return bitmap.asImageBitmap()
 }
