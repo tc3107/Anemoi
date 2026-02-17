@@ -768,6 +768,21 @@ private fun ResourceDistributionOverlay(
     val noiseMetrics = remember(snapshot.sections) {
         buildNoiseMetricSummary(snapshot.sections)
     }
+    val backgroundBreakdown = remember(snapshot.sections, snapshot.totalSectionNs) {
+        buildBackgroundBreakdown(
+            sections = snapshot.sections,
+            totalSectionNs = snapshot.totalSectionNs
+        )
+    }
+    val backgroundDrawGroupSlices = remember(backgroundBreakdown) {
+        backgroundBreakdown?.drawGroupEntries?.map { entry ->
+            DistributionSlice(
+                label = "Draw/${entry.label}",
+                percent = entry.percentOfDraw,
+                color = entry.color
+            )
+        } ?: emptyList()
+    }
 
     Box(
         modifier = modifier
@@ -862,6 +877,58 @@ private fun ResourceDistributionOverlay(
                     totalMs = formatOverlayNsMs(section.totalNs),
                     color = profilerColorForKey(section.name, index)
                 )
+            }
+
+            backgroundBreakdown?.let { breakdown ->
+                Text(
+                    text = "Background Breakdown",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${formatOverlayPercent(breakdown.percentOfTotal)}% of total (${formatOverlayNsMs(breakdown.totalNs)} ms)",
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp
+                )
+                Text(
+                    text = "draw ${formatOverlayPercent(breakdown.drawPercentOfBackground)}% of background (${formatOverlayPercent(breakdown.drawPercentOfTotal)}% total, ${formatOverlayNsMs(breakdown.drawTotalNs)} ms)",
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp
+                )
+
+                if (backgroundDrawGroupSlices.isNotEmpty()) {
+                    SliceShareBar(slices = backgroundDrawGroupSlices)
+                }
+
+                breakdown.drawGroupEntries.take(5).forEach { entry ->
+                    DistributionSectionRow(
+                        label = "Draw/${entry.label}",
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        percent = entry.percentOfDraw,
+                        color = entry.color
+                    )
+                }
+
+                Text(
+                    text = "Top Draw Hotspots",
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                breakdown.drawEntries.take(6).forEach { entry ->
+                    DistributionSectionRow(
+                        label = "BgDraw/${compactBackgroundLabel(entry.label)}",
+                        percent = entry.percentOfDraw,
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        color = entry.color
+                    )
+                }
             }
 
             if (noiseBreakdown.isNotEmpty() || noiseMetrics != null) {
@@ -1060,6 +1127,30 @@ private data class NoiseMetricSummary(
     val averageLargePointCount: Long?
 )
 
+private data class BackgroundDrawGroupEntry(
+    val label: String,
+    val percentOfDraw: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+private data class BackgroundDrawEntry(
+    val label: String,
+    val percentOfDraw: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+private data class BackgroundBreakdown(
+    val totalNs: Long,
+    val percentOfTotal: Float,
+    val drawTotalNs: Long,
+    val drawPercentOfBackground: Float,
+    val drawPercentOfTotal: Float,
+    val drawGroupEntries: List<BackgroundDrawGroupEntry>,
+    val drawEntries: List<BackgroundDrawEntry>
+)
+
 @Composable
 private fun DistributionSectionRow(
     label: String,
@@ -1217,6 +1308,99 @@ private fun buildCategorySlices(
     return slices
 }
 
+private fun buildBackgroundBreakdown(
+    sections: List<PerformanceProfiler.SectionSnapshot>,
+    totalSectionNs: Long
+): BackgroundBreakdown? {
+    val backgroundSections = sections
+        .filter { section -> section.name.startsWith("Background/") }
+        .sortedByDescending { it.totalNs }
+    if (backgroundSections.isEmpty()) return null
+
+    val totalBackgroundNs = backgroundSections.sumOf { it.totalNs }
+    if (totalBackgroundNs <= 0L) return null
+
+    val percentOfTotal = if (totalSectionNs > 0L) {
+        (totalBackgroundNs.toDouble() / totalSectionNs.toDouble() * 100.0).toFloat()
+    } else {
+        0f
+    }
+
+    val drawSections = backgroundSections.filter { section ->
+        section.category == "background-draw" || section.name.contains("/Draw")
+    }
+    val drawTotalNs = drawSections.sumOf { it.totalNs }
+    val drawPercentOfBackground = if (totalBackgroundNs > 0L) {
+        (drawTotalNs.toDouble() / totalBackgroundNs.toDouble() * 100.0).toFloat()
+    } else {
+        0f
+    }
+    val drawPercentOfTotal = if (totalSectionNs > 0L) {
+        (drawTotalNs.toDouble() / totalSectionNs.toDouble() * 100.0).toFloat()
+    } else {
+        0f
+    }
+
+    val drawGroupEntries = if (drawTotalNs > 0L) {
+        val drawGroupTotals = mutableMapOf<String, Long>()
+        drawSections.forEach { section ->
+            val group = drawGroupLabel(section.name)
+            drawGroupTotals[group] = (drawGroupTotals[group] ?: 0L) + section.totalNs
+        }
+        drawGroupTotals.entries
+            .sortedByDescending { it.value }
+            .take(8)
+            .mapIndexed { index, entry ->
+                val percent = (entry.value.toDouble() / drawTotalNs.toDouble() * 100.0).toFloat()
+                BackgroundDrawGroupEntry(
+                    label = entry.key,
+                    percentOfDraw = percent,
+                    totalNs = entry.value,
+                    color = profilerColorForKey("background-draw-group/${entry.key}", index)
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val drawEntries = if (drawTotalNs > 0L) {
+        drawSections
+            .sortedByDescending { it.totalNs }
+            .take(12)
+            .mapIndexed { index, section ->
+                val label = section.name.removePrefix("Background/")
+                val percent = (section.totalNs.toDouble() / drawTotalNs.toDouble() * 100.0).toFloat()
+                BackgroundDrawEntry(
+                    label = label,
+                    percentOfDraw = percent,
+                    totalNs = section.totalNs,
+                    color = profilerColorForKey("background-draw/$label", index)
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    return BackgroundBreakdown(
+        totalNs = totalBackgroundNs,
+        percentOfTotal = percentOfTotal,
+        drawTotalNs = drawTotalNs,
+        drawPercentOfBackground = drawPercentOfBackground,
+        drawPercentOfTotal = drawPercentOfTotal,
+        drawGroupEntries = drawGroupEntries,
+        drawEntries = drawEntries
+    )
+}
+
+private fun drawGroupLabel(sectionName: String): String {
+    val label = sectionName.removePrefix("Background/")
+    return when {
+        label.contains("/Draw/") -> label.substringBefore("/Draw/")
+        label.endsWith("/Draw") -> label.substringBefore("/Draw")
+        else -> label.substringBefore("/")
+    }.ifBlank { "Other" }
+}
+
 private fun buildDialBreakdownEntries(
     sections: List<PerformanceProfiler.SectionSnapshot>
 ): List<DialBreakdownEntry> {
@@ -1304,6 +1488,15 @@ private fun compactProfilerLabel(label: String): String {
         parts.isEmpty() -> label
         parts.size <= 2 -> label
         else -> parts.takeLast(2).joinToString("/")
+    }
+}
+
+private fun compactBackgroundLabel(label: String): String {
+    val parts = label.split("/")
+    return when {
+        parts.isEmpty() -> label
+        parts.size <= 3 -> label
+        else -> parts.takeLast(3).joinToString("/")
     }
 }
 

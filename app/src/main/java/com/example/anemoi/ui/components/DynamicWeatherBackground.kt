@@ -1,5 +1,10 @@
 package com.example.anemoi.ui.components
 
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.RectF
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -430,94 +436,96 @@ private fun NoiseLayer(alpha: Float) {
         modifier = Modifier
             .fillMaxSize()
             .drawWithCache {
-                val densityFactor = (size.width * size.height / 13_500f).toInt().coerceIn(180, 620)
+                val alphaScale = (alpha / 0.06f).coerceIn(0.7f, 1.25f)
+                val densityFactor = ((size.width * size.height / 16_000f) * alphaScale)
+                    .toInt()
+                    .coerceIn(110, 420)
                 val densityBucket = noiseDensityBucket(densityFactor)
                 val random = Random(9127)
-                val points = PerformanceProfiler.measure(
-                    name = "Background/Noise/Cache/Points",
+                val bucketBands = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Buckets",
                     category = "background-cache"
                 ) {
-                    List(densityFactor) {
-                        Offset(
+                    val alphaBandCount = 6
+                    val estimatedBandCapacity = (densityFactor / alphaBandCount).coerceAtLeast(4)
+                    val tinyBands = List(alphaBandCount) { ArrayList<Offset>(estimatedBandCapacity) }
+                    val mediumBands = List(alphaBandCount) { ArrayList<Offset>(estimatedBandCapacity) }
+                    val largeBands = List(alphaBandCount) { ArrayList<Offset>(estimatedBandCapacity) }
+
+                    repeat(densityFactor) {
+                        val point = Offset(
                             x = random.nextFloat() * size.width,
                             y = random.nextFloat() * size.height
                         )
-                    }
-                }
-                val radii = PerformanceProfiler.measure(
-                    name = "Background/Noise/Cache/Radii",
-                    category = "background-cache"
-                ) {
-                    List(densityFactor) { 0.4f + random.nextFloat() * 1.1f }
-                }
-                val alphas = PerformanceProfiler.measure(
-                    name = "Background/Noise/Cache/Alphas",
-                    category = "background-cache"
-                ) {
-                    List(densityFactor) { (0.2f + random.nextFloat() * 0.8f) * alpha }
-                }
-                val colors = PerformanceProfiler.measure(
-                    name = "Background/Noise/Cache/Colors",
-                    category = "background-cache"
-                ) {
-                    List(densityFactor) { index ->
-                        Color.White.copy(alpha = alphas[index].coerceIn(0f, 1f))
-                    }
-                }
-                val radiusBands = PerformanceProfiler.measure(
-                    name = "Background/Noise/Cache/RadiusBands",
-                    category = "background-cache"
-                ) {
-                    val tiny = ArrayList<Int>(densityFactor)
-                    val medium = ArrayList<Int>(densityFactor)
-                    val large = ArrayList<Int>(densityFactor)
-                    radii.forEachIndexed { index, radius ->
+                        val radius = 0.4f + random.nextFloat() * 1.1f
+                        val rawAlpha = 0.2f + random.nextFloat() * 0.8f
+                        val alphaBand = (((rawAlpha - 0.2f) / 0.8f) * (alphaBandCount - 1))
+                            .roundToInt()
+                            .coerceIn(0, alphaBandCount - 1)
+
                         when {
-                            radius <= 0.75f -> tiny += index
-                            radius <= 1.1f -> medium += index
-                            else -> large += index
+                            radius <= 0.75f -> tinyBands[alphaBand] += point
+                            radius <= 1.1f -> mediumBands[alphaBand] += point
+                            else -> largeBands[alphaBand] += point
                         }
                     }
-                    NoiseRadiusBands(
-                        tiny = tiny,
-                        medium = medium,
-                        large = large
+
+                    fun buildBuckets(
+                        bands: List<List<Offset>>,
+                        strokeWidth: Float
+                    ): List<NoiseDrawBucket> {
+                        return bands.mapIndexedNotNull { index, points ->
+                            if (points.isEmpty()) return@mapIndexedNotNull null
+                            val normalizedAlpha = 0.2f + ((index + 0.5f) / alphaBandCount.toFloat()) * 0.8f
+                            NoiseDrawBucket(
+                                points = points,
+                                strokeWidth = strokeWidth,
+                                color = Color.White.copy(alpha = (normalizedAlpha * alpha).coerceIn(0f, 1f))
+                            )
+                        }
+                    }
+
+                    NoiseBucketBands(
+                        tiny = buildBuckets(tinyBands, strokeWidth = 1.2f),
+                        medium = buildBuckets(mediumBands, strokeWidth = 1.95f),
+                        large = buildBuckets(largeBands, strokeWidth = 2.8f),
+                        tinyPointCount = tinyBands.sumOf { it.size },
+                        mediumPointCount = mediumBands.sumOf { it.size },
+                        largePointCount = largeBands.sumOf { it.size }
                     )
                 }
+                val noiseBitmap = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Bitmap",
+                    category = "background-cache"
+                ) {
+                    val textureScale = 0.55f
+                    val textureWidth = (size.width * textureScale).roundToInt().coerceAtLeast(96)
+                    val textureHeight = (size.height * textureScale).roundToInt().coerceAtLeast(96)
+                    buildNoiseBitmap(
+                        widthPx = textureWidth,
+                        heightPx = textureHeight,
+                        sourceWidthPx = size.width,
+                        sourceHeightPx = size.height,
+                        buckets = bucketBands.tiny + bucketBands.medium + bucketBands.large
+                    )
+                }
+                val bitmapPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    isFilterBitmap = false
+                    isDither = true
+                }
+                val destinationRect = RectF(0f, 0f, size.width, size.height)
 
                 onDrawBehind {
                     val drawStartNs = System.nanoTime()
                     PerformanceProfiler.measure(
-                        name = "Background/Noise/Draw/$densityBucket/Tiny",
+                        name = "Background/Noise/Draw/$densityBucket/Composite",
                         category = "background-draw"
                     ) {
-                        drawNoiseBand(
-                            indices = radiusBands.tiny,
-                            points = points,
-                            colors = colors,
-                            radii = radii
-                        )
-                    }
-                    PerformanceProfiler.measure(
-                        name = "Background/Noise/Draw/$densityBucket/Medium",
-                        category = "background-draw"
-                    ) {
-                        drawNoiseBand(
-                            indices = radiusBands.medium,
-                            points = points,
-                            colors = colors,
-                            radii = radii
-                        )
-                    }
-                    PerformanceProfiler.measure(
-                        name = "Background/Noise/Draw/$densityBucket/Large",
-                        category = "background-draw"
-                    ) {
-                        drawNoiseBand(
-                            indices = radiusBands.large,
-                            points = points,
-                            colors = colors,
-                            radii = radii
+                        drawContext.canvas.nativeCanvas.drawBitmap(
+                            noiseBitmap,
+                            null,
+                            destinationRect,
+                            bitmapPaint
                         )
                     }
                     val drawDurationNs = System.nanoTime() - drawStartNs
@@ -534,17 +542,22 @@ private fun NoiseLayer(alpha: Float) {
                     )
                     PerformanceProfiler.record(
                         name = "Background/Noise/Metric/TinyPointCount",
-                        durationNs = radiusBands.tiny.size.toLong(),
+                        durationNs = bucketBands.tinyPointCount.toLong(),
                         category = "background-metric"
                     )
                     PerformanceProfiler.record(
                         name = "Background/Noise/Metric/MediumPointCount",
-                        durationNs = radiusBands.medium.size.toLong(),
+                        durationNs = bucketBands.mediumPointCount.toLong(),
                         category = "background-metric"
                     )
                     PerformanceProfiler.record(
                         name = "Background/Noise/Metric/LargePointCount",
-                        durationNs = radiusBands.large.size.toLong(),
+                        durationNs = bucketBands.largePointCount.toLong(),
+                        category = "background-metric"
+                    )
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/BatchCount",
+                        durationNs = 1L,
                         category = "background-metric"
                     )
                 }
@@ -552,32 +565,59 @@ private fun NoiseLayer(alpha: Float) {
     )
 }
 
-private data class NoiseRadiusBands(
-    val tiny: List<Int>,
-    val medium: List<Int>,
-    val large: List<Int>
+private data class NoiseDrawBucket(
+    val points: List<Offset>,
+    val strokeWidth: Float,
+    val color: Color
 )
 
-private fun DrawScope.drawNoiseBand(
-    indices: List<Int>,
-    points: List<Offset>,
-    colors: List<Color>,
-    radii: List<Float>
-) {
-    indices.forEach { index ->
-        drawCircle(
-            color = colors[index],
-            radius = radii[index],
-            center = points[index]
-        )
+private data class NoiseBucketBands(
+    val tiny: List<NoiseDrawBucket>,
+    val medium: List<NoiseDrawBucket>,
+    val large: List<NoiseDrawBucket>,
+    val tinyPointCount: Int,
+    val mediumPointCount: Int,
+    val largePointCount: Int
+)
+
+private fun buildNoiseBitmap(
+    widthPx: Int,
+    heightPx: Int,
+    sourceWidthPx: Float,
+    sourceHeightPx: Float,
+    buckets: List<NoiseDrawBucket>
+): Bitmap {
+    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        style = AndroidPaint.Style.FILL
     }
+    val scaleX = widthPx.toFloat() / sourceWidthPx.coerceAtLeast(1f)
+    val scaleY = heightPx.toFloat() / sourceHeightPx.coerceAtLeast(1f)
+
+    buckets.forEach { bucket ->
+        if (bucket.points.isEmpty()) return@forEach
+        val alphaInt = (bucket.color.alpha * 255f).roundToInt().coerceIn(0, 255)
+        if (alphaInt <= 0) return@forEach
+        paint.color = AndroidColor.argb(alphaInt, 255, 255, 255)
+        val radiusPx = (bucket.strokeWidth * 0.52f).coerceAtLeast(0.55f)
+        bucket.points.forEach { point ->
+            canvas.drawCircle(
+                point.x * scaleX,
+                point.y * scaleY,
+                radiusPx,
+                paint
+            )
+        }
+    }
+    return bitmap
 }
 
 private fun noiseDensityBucket(pointCount: Int): String {
     return when {
-        pointCount >= 560 -> "VeryHigh"
-        pointCount >= 450 -> "High"
-        pointCount >= 320 -> "Medium"
+        pointCount >= 360 -> "VeryHigh"
+        pointCount >= 280 -> "High"
+        pointCount >= 180 -> "Medium"
         else -> "Low"
     }
 }
