@@ -306,7 +306,7 @@ private fun WeatherParticleLayer(
                         val alpha = (0.16f + particle.alpha * 0.5f).coerceIn(0f, 1f)
                         drawCircle(
                             color = Color.White.copy(alpha = alpha),
-                            radius = 1.35f + particle.size * 3.15f,
+                            radius = 1.8f + particle.size * 4.2f,
                             center = Offset(x, y)
                         )
                     }
@@ -318,7 +318,7 @@ private fun WeatherParticleLayer(
                         val alpha = (0.14f + twinkle * 0.55f).coerceIn(0f, 1f)
                         drawCircle(
                             color = Color.White.copy(alpha = alpha),
-                            radius = 0.8f + particle.size * 1.8f,
+                            radius = 1.15f + particle.size * 2.6f,
                             center = Offset(x, y)
                         )
                     }
