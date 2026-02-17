@@ -1,4 +1,4 @@
-package com.example.anemoi.ui.components
+package com.tudorc.anemoi.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

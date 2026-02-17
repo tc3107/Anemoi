@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.anemoi"
+    namespace = "com.tudorc.anemoi"
     compileSdk = 35
 
     defaultConfig {
