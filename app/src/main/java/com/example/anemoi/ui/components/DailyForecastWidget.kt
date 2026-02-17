@@ -4,8 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -261,7 +261,6 @@ fun DailyForecastWidget(
                     targetValue = if (isExpanded) 0.12f else 0f,
                     label = "daily_row_background"
                 )
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -565,6 +564,8 @@ private fun DailyTemperatureDetail(
             widgetTopToGraphTopInset = 0.dp,
             yAxisLabelCount = 5,
             showXAxisLabels = false,
+            showHudWhenIdle = false,
+            showCurrentTimeDot = false,
             hudReadingTextSizeSp = 16f,
             hudClockTextSizeSp = 13f,
             yAxisLabelHorizontalGap = 12.dp,
@@ -593,12 +594,6 @@ private fun DailyPrecipitationDetail(
             .fillMaxWidth()
             .height(dailyDetailWidgetHeight)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.06f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.1f),
-                shape = RoundedCornerShape(14.dp)
-            )
     ) {
         PrecipitationGraph(
             times = dayHourlyPoints.map { it.timeIso },
@@ -608,6 +603,8 @@ private fun DailyPrecipitationDetail(
             widgetTopToGraphTopInset = 0.dp,
             yAxisLabelCount = 5,
             showXAxisLabels = false,
+            showHudWhenIdle = false,
+            showCurrentTimeDot = false,
             hudReadingTextSizeSp = 16f,
             hudClockTextSizeSp = 13f,
             yAxisLabelHorizontalGap = 12.dp,

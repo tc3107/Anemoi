@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -49,9 +51,11 @@ fun SegmentedSelector(
     val animOffset = remember { Animatable(0f) }
     var isDragging by remember { mutableStateOf(false) }
     var lastDragSegmentIndex by remember { mutableIntStateOf(selectedIndex) }
+    var pendingDragSelectionJob by remember { mutableStateOf<Job?>(null) }
     
     // Tracks the raw finger position relative to the track start
     var rawFingerX by remember { mutableFloatStateOf(0f) }
+    val dragSelectionDebounceMs = 330L
 
     val anchors = remember(options.size, itemWidthPx) {
         options.indices.map { it * (itemWidthPx + internalSpacingPx) }
@@ -104,6 +108,8 @@ fun SegmentedSelector(
                 detectDragGestures(
                     onDragStart = { 
                         isDragging = true
+                        pendingDragSelectionJob?.cancel()
+                        pendingDragSelectionJob = null
                         val minAnchor = anchors.firstOrNull() ?: 0f
                         val maxAnchor = anchors.lastOrNull() ?: 0f
                         rawFingerX = animOffset.value.coerceIn(minAnchor, maxAnchor)
@@ -112,6 +118,8 @@ fun SegmentedSelector(
                     },
                     onDragEnd = {
                         isDragging = false
+                        pendingDragSelectionJob?.cancel()
+                        pendingDragSelectionJob = null
                         lastDragSegmentIndex = selectedIndex
                         val closestIndex = anchors.minByOrNull { abs(it - rawFingerX) }
                             ?.let { anchors.indexOf(it) } ?: selectedIndex
@@ -119,6 +127,8 @@ fun SegmentedSelector(
                     },
                     onDragCancel = {
                         isDragging = false
+                        pendingDragSelectionJob?.cancel()
+                        pendingDragSelectionJob = null
                         lastDragSegmentIndex = selectedIndex
                     },
                     onDrag = { change, amount ->
@@ -126,15 +136,17 @@ fun SegmentedSelector(
                         val minAnchor = anchors.firstOrNull() ?: 0f
                         val maxAnchor = anchors.lastOrNull() ?: 0f
                         rawFingerX = (rawFingerX + amount.x).coerceIn(minAnchor, maxAnchor)
-                        // Visual snapping: notify parent immediately when midpoint is crossed
+                        // Notify parent once per segment boundary crossing during drag.
                         val closestIndex = anchors.minByOrNull { abs(it - rawFingerX) }
                             ?.let { anchors.indexOf(it) } ?: selectedIndex
                         if (closestIndex != lastDragSegmentIndex) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             lastDragSegmentIndex = closestIndex
-                        }
-                        if (closestIndex != selectedIndex) {
-                            onOptionSelected(closestIndex)
+                            pendingDragSelectionJob?.cancel()
+                            pendingDragSelectionJob = coroutineScope.launch {
+                                delay(dragSelectionDebounceMs)
+                                onOptionSelected(closestIndex)
+                            }
                         }
                     }
                 )

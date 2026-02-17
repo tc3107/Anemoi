@@ -33,6 +33,8 @@ fun TemperatureGraph(
     widgetTopToGraphTopInset: Dp = 24.dp,
     yAxisLabelCount: Int = 6,
     showXAxisLabels: Boolean = true,
+    showHudWhenIdle: Boolean = true,
+    showCurrentTimeDot: Boolean = true,
     hudReadingTextSizeSp: Float = 14f,
     hudClockTextSizeSp: Float = 12f,
     yAxisLabelHorizontalGap: Dp = 8.dp,
@@ -219,79 +221,81 @@ fun TemperatureGraph(
                             }
 
                             // Interaction Selected Value
-                            val fraction = if (isDragging && dragX != null) {
-                                (dragX!!.coerceIn(l, l + drawW) - l) / drawW
-                            } else {
-                                curF
-                            }
-                            val displayedTemp = if (isDragging && dragX != null) {
-                                getInterpolatedTemp(fraction)
-                            } else {
-                                currentTemp ?: getInterpolatedTemp(fraction)
-                            }
+                            if (isDragging || showHudWhenIdle) {
+                                val fraction = if (isDragging && dragX != null) {
+                                    (dragX!!.coerceIn(l, l + drawW) - l) / drawW
+                                } else {
+                                    curF
+                                }
+                                val displayedTemp = if (isDragging && dragX != null) {
+                                    getInterpolatedTemp(fraction)
+                                } else {
+                                    currentTemp ?: getInterpolatedTemp(fraction)
+                                }
 
-                            val readingLabel = formatTempWithUnit(displayedTemp)
-                            val hr = (fraction * 24).toInt() % 24
-                            val min = ((fraction * 24 - hr) * 60).toInt()
-                            val clockLabel = String.format("%02d:%02d", hr, min)
-                            val hudRightX = w - rightPaddingDp.toPx()
-                            val widgetTopY = -widgetTopToGraphTopInset.toPx()
-                            val topGridLineY = t
-                            val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
-                            val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
-                            val baseGap = 6.dp.toPx()
-                            val baseReadingTextSizeSp = hudReadingTextSizeSp
-                            val baseClockTextSizeSp = hudClockTextSizeSp
+                                val readingLabel = formatTempWithUnit(displayedTemp)
+                                val hr = (fraction * 24).toInt() % 24
+                                val min = ((fraction * 24 - hr) * 60).toInt()
+                                val clockLabel = String.format("%02d:%02d", hr, min)
+                                val hudRightX = w - rightPaddingDp.toPx()
+                                val widgetTopY = -widgetTopToGraphTopInset.toPx()
+                                val topGridLineY = t
+                                val availableHudHeight = (topGridLineY - widgetTopY).coerceAtLeast(1f)
+                                val availableHudWidth = (hudRightX - l).coerceAtLeast(1f)
+                                val baseGap = 6.dp.toPx()
+                                val baseReadingTextSizeSp = hudReadingTextSizeSp
+                                val baseClockTextSizeSp = hudClockTextSizeSp
 
-                            val baseReadingStyle = TextStyle(
-                                color = Color.White,
-                                fontSize = baseReadingTextSizeSp.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            val baseClockStyle = TextStyle(
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = baseClockTextSizeSp.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-
-                            var readingLayout = textMeasurer.measure(readingLabel, baseReadingStyle)
-                            var timeLayout = textMeasurer.measure(clockLabel, baseClockStyle)
-                            var readingClockGap = baseGap
-                            var combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
-                            var maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
-
-                            if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
-                                val scaleForHeight = availableHudHeight / maxTextHeight
-                                val scaleForWidth = availableHudWidth / combinedWidth
-                                val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
-                                val scaledReadingStyle = baseReadingStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
-                                val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
-                                readingLayout = textMeasurer.measure(readingLabel, scaledReadingStyle)
-                                timeLayout = textMeasurer.measure(clockLabel, scaledClockStyle)
-                                readingClockGap = baseGap * scale
-                                combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
-                                maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
-                            }
-
-                            val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
-                            val rowStartX = hudRightX - combinedWidth
-                            val readingTop = hudCenterY - (readingLayout.size.height * 0.5f)
-                            val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
-
-                            drawText(
-                                readingLayout,
-                                topLeft = Offset(
-                                    rowStartX,
-                                    readingTop
+                                val baseReadingStyle = TextStyle(
+                                    color = Color.White,
+                                    fontSize = baseReadingTextSizeSp.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                            )
-                            drawText(
-                                timeLayout,
-                                topLeft = Offset(
-                                    rowStartX + readingLayout.size.width + readingClockGap,
-                                    clockTop
+                                val baseClockStyle = TextStyle(
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = baseClockTextSizeSp.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
-                            )
+
+                                var readingLayout = textMeasurer.measure(readingLabel, baseReadingStyle)
+                                var timeLayout = textMeasurer.measure(clockLabel, baseClockStyle)
+                                var readingClockGap = baseGap
+                                var combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                                var maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+
+                                if (maxTextHeight > availableHudHeight || combinedWidth > availableHudWidth) {
+                                    val scaleForHeight = availableHudHeight / maxTextHeight
+                                    val scaleForWidth = availableHudWidth / combinedWidth
+                                    val scale = min(scaleForHeight, scaleForWidth).coerceIn(0f, 1f)
+                                    val scaledReadingStyle = baseReadingStyle.copy(fontSize = (baseReadingTextSizeSp * scale).sp)
+                                    val scaledClockStyle = baseClockStyle.copy(fontSize = (baseClockTextSizeSp * scale).sp)
+                                    readingLayout = textMeasurer.measure(readingLabel, scaledReadingStyle)
+                                    timeLayout = textMeasurer.measure(clockLabel, scaledClockStyle)
+                                    readingClockGap = baseGap * scale
+                                    combinedWidth = readingLayout.size.width + readingClockGap + timeLayout.size.width
+                                    maxTextHeight = max(readingLayout.size.height, timeLayout.size.height).toFloat()
+                                }
+
+                                val hudCenterY = (widgetTopY + topGridLineY) * 0.5f
+                                val rowStartX = hudRightX - combinedWidth
+                                val readingTop = hudCenterY - (readingLayout.size.height * 0.5f)
+                                val clockTop = hudCenterY - (timeLayout.size.height * 0.5f)
+
+                                drawText(
+                                    readingLayout,
+                                    topLeft = Offset(
+                                        rowStartX,
+                                        readingTop
+                                    )
+                                )
+                                drawText(
+                                    timeLayout,
+                                    topLeft = Offset(
+                                        rowStartX + readingLayout.size.width + readingClockGap,
+                                        clockTop
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -387,7 +391,9 @@ fun TemperatureGraph(
 
             drawPointHUD(pointOnCurve(highFraction), Color(0xFF0288D1))
             drawPointHUD(pointOnCurve(lowFraction), Color(0xFF0288D1))
-            drawPointHUD(pointOnCurve(curF), Color.White)
+            if (showCurrentTimeDot) {
+                drawPointHUD(pointOnCurve(curF), Color.White)
+            }
         }
     }
 }
