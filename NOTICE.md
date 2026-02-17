@@ -6,13 +6,6 @@ This project depends on external services and open-source libraries. Please revi
 
 - Open-Meteo API: https://open-meteo.com/
 - OpenStreetMap Nominatim: https://nominatim.org/
-- OpenStreetMap data: https://www.openstreetmap.org/
-
-## OpenStreetMap License
-
-OpenStreetMap data is available under the Open Database License (ODbL). See:
-
-- https://www.openstreetmap.org/copyright
 
 ## Maintainer Note
 
