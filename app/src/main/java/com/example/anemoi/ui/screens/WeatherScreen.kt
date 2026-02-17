@@ -655,7 +655,6 @@ private fun TopPageStatusStrip(
             add(
                 when {
                     isActive && status == true -> Color.Green
-                    isActive && status == false -> Color.Red
                     isActive -> Color.White
                     else -> Color.White.copy(alpha = 0.5f)
                 }
@@ -669,7 +668,6 @@ private fun TopPageStatusStrip(
             add(
                 when {
                     isActive && status == true -> Color.Green
-                    isActive && status == false -> Color.Red
                     isActive -> Color.White
                     else -> Color.White.copy(alpha = 0.32f)
                 }
