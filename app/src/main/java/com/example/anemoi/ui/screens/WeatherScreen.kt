@@ -638,13 +638,14 @@ private fun TopPageStatusStrip(
     blurStrength: Float,
     modifier: Modifier = Modifier
 ) {
+    val segmentOpacity = 0.65f
     val sectionColors = buildList {
         val isLocationActive = currentPage == 0
         add(
             if (isLocationActive) {
                 if (locationFound) Color(0xFF4285F4) else Color.White
             } else {
-                Color(0xFF8FB8FF).copy(alpha = 0.64f)
+                Color.White.copy(alpha = 0.5f)
             }
         )
 
@@ -654,7 +655,7 @@ private fun TopPageStatusStrip(
             val status = pageStatuses[key]
             add(
                 when {
-                    isActive && status == true -> Color.Green
+                    isActive && status == true -> Color.Green.copy(alpha = 0.5f)
                     isActive -> Color.White
                     else -> Color.White.copy(alpha = 0.5f)
                 }
@@ -667,7 +668,7 @@ private fun TopPageStatusStrip(
             val status = pageStatuses[key]
             add(
                 when {
-                    isActive && status == true -> Color.Green
+                    isActive && status == true -> Color.Green.copy(alpha = 0.5f)
                     isActive -> Color.White
                     else -> Color.White.copy(alpha = 0.32f)
                 }
@@ -683,9 +684,9 @@ private fun TopPageStatusStrip(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.22f),
-                        Color.White.copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.05f)
+                        Color.White.copy(alpha = 0.14f),
+                        Color.White.copy(alpha = 0.07f),
+                        Color.White.copy(alpha = 0.03f)
                     )
                 )
             )
@@ -693,8 +694,8 @@ private fun TopPageStatusStrip(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.32f),
-                        Color.White.copy(alpha = 0.08f)
+                        Color.White.copy(alpha = 0.2f),
+                        Color.White.copy(alpha = 0.05f)
                     )
                 ),
                 shape = stripShape
@@ -704,7 +705,7 @@ private fun TopPageStatusStrip(
             modifier = Modifier
                 .matchParentSize()
                 .blur((blurStrength * 0.55f).coerceAtLeast(0f).dp)
-                .background(Color.White.copy(alpha = tintAlpha.coerceIn(0f, 1f) * 0.85f))
+                .background(Color.White.copy(alpha = tintAlpha.coerceIn(0f, 1f) * 0.55f))
         )
         Row(
             modifier = Modifier
@@ -718,7 +719,11 @@ private fun TopPageStatusStrip(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(1.5.dp))
-                        .background(sectionColor)
+                        .background(
+                            sectionColor.copy(
+                                alpha = (sectionColor.alpha * segmentOpacity).coerceIn(0f, 1f)
+                            )
+                        )
                 )
             }
         }
