@@ -13,6 +13,7 @@ captures/
 *.ap_
 *.aab.sha256
 output-metadata.json
+app/release/
 
 # Local Android SDK config
 local.properties
