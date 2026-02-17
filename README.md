@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/logo.svg" width="240" alt="Anemoi logo" />
+</p>
+
 # Anemoi
 
 Anemoi is an Android weather app built with Jetpack Compose. It combines live location, place search, and forecast visualization in a single mobile-first interface.
