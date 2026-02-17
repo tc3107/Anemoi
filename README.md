@@ -6,6 +6,8 @@
 
 Anemoi is a modern Android weather app focused on fast glanceability, a sleek UI, and practical location privacy controls.
 
+In Greek mythology, the Anemoi are the wind gods, each associated with a cardinal direction and seasonal weather.
+
 ## Key Features
 
 - Sleek, modern UI with weather-reactive animated backgrounds
