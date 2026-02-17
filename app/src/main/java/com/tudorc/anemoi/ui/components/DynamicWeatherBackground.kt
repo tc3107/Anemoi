@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import com.tudorc.anemoi.util.PerformanceProfiler
 import kotlin.math.PI
 import kotlin.math.abs
@@ -587,7 +588,7 @@ private fun buildNoiseBitmap(
     sourceHeightPx: Float,
     buckets: List<NoiseDrawBucket>
 ): Bitmap {
-    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
     val canvas = AndroidCanvas(bitmap)
     val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         style = AndroidPaint.Style.FILL

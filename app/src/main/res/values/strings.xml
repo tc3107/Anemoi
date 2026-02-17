@@ -3,9 +3,12 @@
     <string name="widget_weather_description">Selected location and current temperature</string>
     <string name="widget_location_placeholder">Select location</string>
     <string name="widget_temp_placeholder">--°</string>
-    <string name="widget_feels_like_placeholder">Feels like --°</string>
+    <string name="widget_high_placeholder">H: &#8212;°</string>
+    <string name="widget_low_placeholder">L: &#8212;°</string>
+    <string name="widget_hour_time_placeholder">--:--</string>
+    <string name="widget_feels_like_placeholder">Feels like &#8212;°</string>
     <string name="widget_feels_like_format">Feels like %1$s</string>
-    <string name="widget_updated_placeholder">--</string>
+    <string name="widget_updated_placeholder">&#8212;</string>
     <string name="widget_updated_now_short">now</string>
     <string name="widget_updated_now_long">Updated now</string>
     <string name="widget_updated_long_format">Updated %1$s ago</string>

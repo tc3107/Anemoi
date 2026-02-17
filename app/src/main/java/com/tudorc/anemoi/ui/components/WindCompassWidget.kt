@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.createBitmap
 import com.tudorc.anemoi.data.WindUnit
 import com.tudorc.anemoi.util.PerformanceProfiler
 import java.util.Locale
@@ -289,7 +291,7 @@ private fun rememberCompassRotationState(lockDialToNorth: Boolean): CompassRotat
 
     val context = LocalContext.current
     var hasCompassData by remember { mutableStateOf(false) }
-    var renderedRotationDegrees by remember { mutableStateOf(0f) }
+    var renderedRotationDegrees by remember { mutableFloatStateOf(0f) }
 
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -650,7 +652,7 @@ private fun buildCompassDialStaticBitmap(
     cardinalStep: Int,
     cardinalCutoutRadius: Int
 ): ImageBitmap {
-    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
     val canvas = AndroidCanvas(bitmap)
     val centerX = widthPx / 2f
     val centerY = heightPx / 2f
@@ -744,7 +746,7 @@ private fun buildCompassArrowBitmap(
     heightPx: Int,
     densityScale: Float
 ): ImageBitmap {
-    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
     val canvas = AndroidCanvas(bitmap)
     val centerX = widthPx / 2f
     val centerY = heightPx / 2f
@@ -843,7 +845,7 @@ private fun rememberAnimatedAngleDegrees(
     label: String
 ): Float {
     val normalizedTarget = normalizeDegrees(targetDegrees)
-    var continuousTarget by remember { mutableStateOf(normalizedTarget) }
+    var continuousTarget by remember { mutableFloatStateOf(normalizedTarget) }
 
     LaunchedEffect(normalizedTarget) {
         val currentNormalized = normalizeDegrees(continuousTarget)

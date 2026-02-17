@@ -42,7 +42,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     val haptic = LocalHapticFeedback.current
     var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
-    var draftGridKm by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.gridKm) }
+    var draftGridKm by remember(uiState.isSettingsOpen) { mutableFloatStateOf(uiState.gridKm) }
     val backgroundPresetMaxIndex = backgroundOverridePresets.lastIndex.coerceAtLeast(0)
     val selectedBackgroundPreset = if (backgroundOverridePresets.isNotEmpty()) {
         backgroundOverridePresets[uiState.backgroundOverridePresetIndex.coerceIn(0, backgroundPresetMaxIndex)]

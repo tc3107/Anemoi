@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tudorc.anemoi.data.TempUnit
 import com.tudorc.anemoi.util.PerformanceProfiler
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -242,7 +243,12 @@ fun TemperatureGraph(
                                 val readingLabel = formatTempWithUnit(displayedTemp)
                                 val hr = (fraction * 24).toInt() % 24
                                 val min = ((fraction * 24 - hr) * 60).toInt()
-                                val clockLabel = String.format("%02d:%02d", hr, min)
+                                val clockLabel = String.format(
+                                    Locale.getDefault(),
+                                    "%02d:%02d",
+                                    hr,
+                                    min
+                                )
                                 val hudRightX = w - rightPaddingDp.toPx()
                                 val widgetTopY = -widgetTopToGraphTopInset.toPx()
                                 val topGridLineY = t
@@ -338,7 +344,7 @@ fun TemperatureGraph(
                 drawLine(gridColor, Offset(x, t), Offset(x, t + drawH), 1.dp.toPx())
                 if (showXAxisLabels) {
                     val textLayout = textMeasurer.measure(
-                        String.format("%02d", hour),
+                        String.format(Locale.getDefault(), "%02d", hour),
                         TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp)
                     )
                     drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))

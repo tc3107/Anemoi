@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tudorc.anemoi.util.PerformanceProfiler
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -198,7 +199,11 @@ fun PrecipitationGraph(
                             val labelStyle = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
                             val labels = (0 until safeYAxisLabelCount).map { i ->
                                 val mmValue = i * (snappedMaxPrecip / yAxisSteps.toDouble())
-                                val labelText = if (snappedMaxPrecip <= 2.0) String.format("%.1f", mmValue) else mmValue.roundToInt().toString()
+                                val labelText = if (snappedMaxPrecip <= 2.0) {
+                                    String.format(Locale.getDefault(), "%.1f", mmValue)
+                                } else {
+                                    mmValue.roundToInt().toString()
+                                }
                                 textMeasurer.measure("$labelText mm", labelStyle)
                             }
                             val alignRightX = l - yAxisLabelHorizontalGap.toPx()
@@ -218,6 +223,7 @@ fun PrecipitationGraph(
                                 val interpolatedProb = getInterpolatedProb(fraction)
                                 val probLabel = "${interpolatedProb.roundToInt()}%"
                                 val timeLabel = String.format(
+                                    Locale.getDefault(),
                                     "%02d:%02d",
                                     (fraction * 24).toInt() % 24,
                                     ((fraction * 24 - (fraction * 24).toInt()) * 60).toInt()
@@ -311,7 +317,7 @@ fun PrecipitationGraph(
                 drawLine(gridColor, Offset(x, t), Offset(x, t + drawH), 1.dp.toPx())
                 if (showXAxisLabels) {
                     val textLayout = textMeasurer.measure(
-                        String.format("%02d", hour),
+                        String.format(Locale.getDefault(), "%02d", hour),
                         TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp)
                     )
                     drawText(textLayout, topLeft = Offset(x - textLayout.size.width / 2, t + drawH + 6.dp.toPx()))

@@ -13,7 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -105,7 +105,7 @@ fun HourlyForecastWidget(
     val listState = remember(initialVisibleItemIndex) {
         LazyListState(firstVisibleItemIndex = initialVisibleItemIndex)
     }
-    var lastEdgeHit by remember { mutableStateOf(0) } // -1 = start, 1 = end
+    var lastEdgeHit by remember { mutableIntStateOf(0) } // -1 = start, 1 = end
     val iconResByCode = remember(forecastItems) {
         forecastItems
             .asSequence()

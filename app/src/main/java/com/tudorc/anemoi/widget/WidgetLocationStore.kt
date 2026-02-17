@@ -1,6 +1,7 @@
 package com.tudorc.anemoi.widget
 
 import android.content.Context
+import androidx.core.content.edit
 import com.tudorc.anemoi.data.LocationItem
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -21,17 +22,17 @@ object WidgetLocationStore {
         val encoded = runCatching { json.encodeToString(location) }.getOrNull() ?: return
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString("$LOCATION_PREFIX$appWidgetId", encoded)
-            .apply()
+            .edit {
+                putString("$LOCATION_PREFIX$appWidgetId", encoded)
+            }
     }
 
     fun saveCurrentLocationSelection(context: Context, appWidgetId: Int) {
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString("$LOCATION_PREFIX$appWidgetId", CURRENT_LOCATION_SENTINEL)
-            .apply()
+            .edit {
+                putString("$LOCATION_PREFIX$appWidgetId", CURRENT_LOCATION_SENTINEL)
+            }
     }
 
     fun loadSelection(context: Context, appWidgetId: Int): WidgetLocationSelection? {
@@ -52,9 +53,9 @@ object WidgetLocationStore {
     fun removeLocation(context: Context, appWidgetId: Int) {
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove("$LOCATION_PREFIX$appWidgetId")
-            .apply()
+            .edit {
+                remove("$LOCATION_PREFIX$appWidgetId")
+            }
     }
 
     fun updateCustomNameForLocation(
@@ -86,11 +87,11 @@ object WidgetLocationStore {
 
         if (updates.isEmpty()) return
 
-        val editor = prefs.edit()
-        updates.forEach { (key, encoded) ->
-            editor.putString(key, encoded)
+        prefs.edit {
+            updates.forEach { (key, encoded) ->
+                putString(key, encoded)
+            }
         }
-        editor.apply()
     }
 
     private fun isSameLocation(a: LocationItem, b: LocationItem): Boolean {

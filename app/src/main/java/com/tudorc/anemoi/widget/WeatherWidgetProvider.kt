@@ -6,12 +6,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.graphics.toColorInt
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.tudorc.anemoi.MainActivity
@@ -90,7 +90,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
     companion object {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val widgetIconTintColor = Color.parseColor("#D6D9DE")
+        private val widgetIconTintColor = "#D6D9DE".toColorInt()
         private const val updateDebounceMs = 350L
         private val updateLock = Any()
         private var pendingUpdateJob: Job? = null

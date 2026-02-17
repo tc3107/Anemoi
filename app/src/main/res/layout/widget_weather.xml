@@ -114,6 +114,7 @@
         android:layout_alignParentBottom="true"
         android:layout_below="@id/widget_top_row"
         android:layout_marginTop="4dp"
+        android:baselineAligned="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:visibility="gone">
@@ -170,7 +171,7 @@
                         android:shadowDx="0"
                         android:shadowDy="1"
                         android:shadowRadius="2"
-                        android:text="H: --°"
+                        android:text="@string/widget_high_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="12sp" />
 
@@ -182,7 +183,7 @@
                         android:shadowDx="0"
                         android:shadowDy="1"
                         android:shadowRadius="2"
-                        android:text="L: --°"
+                        android:text="@string/widget_low_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -232,7 +233,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:text="--:--"
+                        android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="12sp" />
 
@@ -251,7 +252,7 @@
                         android:layout_height="wrap_content"
                         android:gravity="end"
                         android:layout_marginStart="28dp"
-                        android:text="--°"
+                        android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -270,7 +271,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:text="--:--"
+                        android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="12sp" />
 
@@ -289,7 +290,7 @@
                         android:layout_height="wrap_content"
                         android:gravity="end"
                         android:layout_marginStart="28dp"
-                        android:text="--°"
+                        android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -308,7 +309,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:text="--:--"
+                        android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="12sp" />
 
@@ -327,7 +328,7 @@
                         android:layout_height="wrap_content"
                         android:gravity="end"
                         android:layout_marginStart="28dp"
-                        android:text="--°"
+                        android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
                         android:textSize="13sp"
                         android:textStyle="bold" />
