@@ -504,6 +504,33 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
+                                            text = "Freeze Compass North",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Disables live compass sensor updates and pins the dial north-up.",
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Switch(
+                                        checked = uiState.isCompassNorthLocked,
+                                        onCheckedChange = viewModel::setCompassNorthLocked,
+                                        colors = settingsSwitchColors
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
                                             text = "Override Background",
                                             color = Color.White,
                                             fontWeight = FontWeight.Medium

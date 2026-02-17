@@ -101,6 +101,7 @@ data class WeatherUiState(
     val isOrganizerMode: Boolean = false,
     val isDebugOptionsVisible: Boolean = false,
     val isPerformanceOverlayEnabled: Boolean = false,
+    val isCompassNorthLocked: Boolean = false,
     val isBackgroundOverrideEnabled: Boolean = false,
     val backgroundOverridePresetIndex: Int = 0,
     val backgroundOverrideWindSpeedKmh: Float = 0f,
@@ -255,6 +256,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val debugOptionsVisibleKey = booleanPreferencesKey("debug_options_visible")
     private val performanceOverlayEnabledKey = booleanPreferencesKey("performance_overlay_enabled")
     private val aPerformanceOverlayEnabledLegacyKey = booleanPreferencesKey("aperformance_overlay_enabled")
+    private val compassNorthLockedKey = booleanPreferencesKey("compass_north_locked")
     private val backgroundOverrideEnabledKey = booleanPreferencesKey("background_override_enabled")
     private val backgroundOverridePresetIndexKey = intPreferencesKey("background_override_preset_index")
     private val backgroundOverrideWindSpeedKmhKey = floatPreferencesKey("background_override_wind_speed_kmh")
@@ -379,6 +381,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 isPerformanceOverlayEnabled = prefs[performanceOverlayEnabledKey]
                     ?: prefs[aPerformanceOverlayEnabledLegacyKey]
                     ?: false,
+                isCompassNorthLocked = prefs[compassNorthLockedKey] ?: false,
                 isBackgroundOverrideEnabled = prefs[backgroundOverrideEnabledKey] ?: false,
                 backgroundOverridePresetIndex = (prefs[backgroundOverridePresetIndexKey] ?: 0)
                     .coerceIn(0, backgroundOverridePresets.lastIndex.coerceAtLeast(0)),
@@ -1036,6 +1039,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 it[performanceOverlayEnabledKey] = enabled
                 it.remove(aPerformanceOverlayEnabledLegacyKey)
             }
+        }
+    }
+
+    fun setCompassNorthLocked(enabled: Boolean) {
+        _uiState.update { it.copy(isCompassNorthLocked = enabled) }
+        viewModelScope.launch {
+            applicationContext.dataStore.edit { it[compassNorthLockedKey] = enabled }
         }
     }
 

@@ -379,6 +379,7 @@ fun WeatherDetailsSheet(
                             gustSpeedKmh = currentGust,
                             maxGustKmh = maxGustToday,
                             unit = uiState.windUnit,
+                            lockDialToNorth = uiState.isCompassNorthLocked,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

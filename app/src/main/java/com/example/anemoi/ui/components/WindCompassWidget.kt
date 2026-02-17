@@ -67,13 +67,14 @@ fun WindCompassWidget(
     gustSpeedKmh: Double?,
     maxGustKmh: Double?,
     unit: WindUnit,
+    lockDialToNorth: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val windSpeedText = formatSpeedWithUnit(windSpeedKmh, unit)
     val headingText = windDirectionDegrees?.let { formatBearing(it) } ?: "--"
     val gustSpeedText = formatSpeedWithUnit(gustSpeedKmh, unit)
     val maxGustText = formatSpeedWithUnit(maxGustKmh, unit)
-    val compassRotationState = rememberCompassRotationState()
+    val compassRotationState = rememberCompassRotationState(lockDialToNorth = lockDialToNorth)
     val animatedDialRotationDegrees = rememberAnimatedAngleDegrees(
         targetDegrees = if (compassRotationState.hasData) {
             compassRotationState.rotationDegrees
@@ -277,7 +278,14 @@ private data class CompassRotationState(
 )
 
 @Composable
-private fun rememberCompassRotationState(): CompassRotationState {
+private fun rememberCompassRotationState(lockDialToNorth: Boolean): CompassRotationState {
+    if (lockDialToNorth) {
+        return CompassRotationState(
+            rotationDegrees = 0f,
+            hasData = true
+        )
+    }
+
     val context = LocalContext.current
     var hasCompassData by remember { mutableStateOf(false) }
     var renderedRotationDegrees by remember { mutableStateOf(0f) }

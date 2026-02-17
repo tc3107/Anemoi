@@ -774,11 +774,26 @@ private fun ResourceDistributionOverlay(
             totalSectionNs = snapshot.totalSectionNs
         )
     }
+    val widgetDrawBreakdown = remember(snapshot.sections, snapshot.totalSectionNs) {
+        buildWidgetDrawBreakdown(
+            sections = snapshot.sections,
+            totalSectionNs = snapshot.totalSectionNs
+        )
+    }
     val backgroundDrawGroupSlices = remember(backgroundBreakdown) {
         backgroundBreakdown?.drawGroupEntries?.map { entry ->
             DistributionSlice(
                 label = "Draw/${entry.label}",
                 percent = entry.percentOfDraw,
+                color = entry.color
+            )
+        } ?: emptyList()
+    }
+    val widgetDrawGroupSlices = remember(widgetDrawBreakdown) {
+        widgetDrawBreakdown?.groupEntries?.map { entry ->
+            DistributionSlice(
+                label = entry.label,
+                percent = entry.percentOfWidgetDraw,
                 color = entry.color
             )
         } ?: emptyList()
@@ -877,6 +892,52 @@ private fun ResourceDistributionOverlay(
                     totalMs = formatOverlayNsMs(section.totalNs),
                     color = profilerColorForKey(section.name, index)
                 )
+            }
+
+            widgetDrawBreakdown?.let { breakdown ->
+                Text(
+                    text = "Widget Draw Breakdown",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${formatOverlayPercent(breakdown.percentOfTotal)}% of total (${formatOverlayNsMs(breakdown.totalNs)} ms)",
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp
+                )
+
+                if (widgetDrawGroupSlices.isNotEmpty()) {
+                    SliceShareBar(slices = widgetDrawGroupSlices)
+                }
+
+                breakdown.groupEntries.take(5).forEach { entry ->
+                    DistributionSectionRow(
+                        label = entry.label,
+                        percent = entry.percentOfWidgetDraw,
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        color = entry.color
+                    )
+                }
+
+                Text(
+                    text = "Top Widget Draw Hotspots",
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                breakdown.entries.take(6).forEach { entry ->
+                    DistributionSectionRow(
+                        label = "Widget/${compactWidgetLabel(entry.label)}",
+                        percent = entry.percentOfWidgetDraw,
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        color = entry.color
+                    )
+                }
             }
 
             backgroundBreakdown?.let { breakdown ->
@@ -1132,6 +1193,27 @@ private data class BackgroundDrawGroupEntry(
     val percentOfDraw: Float,
     val totalNs: Long,
     val color: Color
+)
+
+private data class WidgetDrawGroupEntry(
+    val label: String,
+    val percentOfWidgetDraw: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+private data class WidgetDrawEntry(
+    val label: String,
+    val percentOfWidgetDraw: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+private data class WidgetDrawBreakdown(
+    val totalNs: Long,
+    val percentOfTotal: Float,
+    val groupEntries: List<WidgetDrawGroupEntry>,
+    val entries: List<WidgetDrawEntry>
 )
 
 private data class BackgroundDrawEntry(
@@ -1392,6 +1474,87 @@ private fun buildBackgroundBreakdown(
     )
 }
 
+private fun buildWidgetDrawBreakdown(
+    sections: List<PerformanceProfiler.SectionSnapshot>,
+    totalSectionNs: Long
+): WidgetDrawBreakdown? {
+    val widgetDrawSections = sections
+        .filter { section -> section.category == "widget-draw" }
+        .sortedByDescending { it.totalNs }
+    if (widgetDrawSections.isEmpty()) return null
+
+    val totalWidgetDrawNs = widgetDrawSections.sumOf { it.totalNs }
+    if (totalWidgetDrawNs <= 0L) return null
+
+    val percentOfTotal = if (totalSectionNs > 0L) {
+        (totalWidgetDrawNs.toDouble() / totalSectionNs.toDouble() * 100.0).toFloat()
+    } else {
+        0f
+    }
+
+    fun buildGroupTotals(depth: Int): Map<String, Long> {
+        val groupTotals = mutableMapOf<String, Long>()
+        widgetDrawSections.forEach { section ->
+            val component = widgetDrawGroupLabel(section.name, depth = depth)
+            groupTotals[component] = (groupTotals[component] ?: 0L) + section.totalNs
+        }
+        return groupTotals
+    }
+
+    var groupTotals = buildGroupTotals(depth = 1)
+    if (groupTotals.size == 1) {
+        val deeperTotals = buildGroupTotals(depth = 2)
+        if (deeperTotals.size > 1) {
+            groupTotals = deeperTotals
+        }
+    }
+    if (groupTotals.size == 1) {
+        val evenDeeperTotals = buildGroupTotals(depth = 3)
+        if (evenDeeperTotals.size > 1) {
+            groupTotals = evenDeeperTotals
+        }
+    }
+
+    val groupEntries = groupTotals.entries
+        .sortedByDescending { it.value }
+        .take(8)
+        .mapIndexed { index, entry ->
+            WidgetDrawGroupEntry(
+                label = entry.key,
+                percentOfWidgetDraw = (entry.value.toDouble() / totalWidgetDrawNs.toDouble() * 100.0).toFloat(),
+                totalNs = entry.value,
+                color = profilerColorForKey("widget-group/${entry.key}", index)
+            )
+        }
+
+    val entries = widgetDrawSections
+        .take(12)
+        .mapIndexed { index, section ->
+            WidgetDrawEntry(
+                label = section.name,
+                percentOfWidgetDraw = (section.totalNs.toDouble() / totalWidgetDrawNs.toDouble() * 100.0).toFloat(),
+                totalNs = section.totalNs,
+                color = profilerColorForKey("widget-draw/${section.name}", index)
+            )
+        }
+
+    return WidgetDrawBreakdown(
+        totalNs = totalWidgetDrawNs,
+        percentOfTotal = percentOfTotal,
+        groupEntries = groupEntries,
+        entries = entries
+    )
+}
+
+private fun widgetDrawGroupLabel(sectionName: String, depth: Int): String {
+    val parts = sectionName
+        .split("/")
+        .filter { it.isNotBlank() }
+    if (parts.isEmpty()) return "Other"
+    val safeDepth = depth.coerceIn(1, parts.size)
+    return parts.take(safeDepth).joinToString("/")
+}
+
 private fun drawGroupLabel(sectionName: String): String {
     val label = sectionName.removePrefix("Background/")
     return when {
@@ -1492,6 +1655,15 @@ private fun compactProfilerLabel(label: String): String {
 }
 
 private fun compactBackgroundLabel(label: String): String {
+    val parts = label.split("/")
+    return when {
+        parts.isEmpty() -> label
+        parts.size <= 3 -> label
+        else -> parts.takeLast(3).joinToString("/")
+    }
+}
+
+private fun compactWidgetLabel(label: String): String {
     val parts = label.split("/")
     return when {
         parts.isEmpty() -> label
