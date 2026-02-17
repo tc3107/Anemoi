@@ -10,10 +10,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -26,11 +29,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,11 +84,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     val latestFavorites by rememberUpdatedState(favorites)
     val latestSearchedLocation by rememberUpdatedState(searchedLocation)
     val latestIsFollowMode by rememberUpdatedState(uiState.isFollowMode)
-    var overlayFps by remember { mutableStateOf(0) }
-    var overlayAvgFrameMs by remember { mutableStateOf(0f) }
-    var overlayUsedMemMb by remember { mutableStateOf(0) }
-    var overlayFreeMemMb by remember { mutableStateOf(0) }
-    var overlayMaxMemMb by remember { mutableStateOf(0) }
     var overlayProfilerSnapshot by remember {
         mutableStateOf(PerformanceProfiler.Snapshot.Empty)
     }
@@ -160,23 +156,13 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     LaunchedEffect(uiState.isPerformanceOverlayEnabled) {
         PerformanceProfiler.setEnabled(uiState.isPerformanceOverlayEnabled)
         if (!uiState.isPerformanceOverlayEnabled) {
-            overlayFps = 0
-            overlayAvgFrameMs = 0f
             overlayProfilerSnapshot = PerformanceProfiler.Snapshot.Empty
             PerformanceProfiler.reset()
             return@LaunchedEffect
         }
 
-        val runtime = Runtime.getRuntime()
-        val initialFreeBytes = runtime.freeMemory()
-        val initialUsedBytes = runtime.totalMemory() - initialFreeBytes
-        overlayUsedMemMb = (initialUsedBytes / (1024L * 1024L)).toInt()
-        overlayFreeMemMb = (initialFreeBytes / (1024L * 1024L)).toInt()
-        overlayMaxMemMb = (runtime.maxMemory() / (1024L * 1024L)).toInt()
         var windowStartNs = 0L
         var previousFrameNs = 0L
-        var frameCount = 0
-        var frameDurationsNs = 0L
 
         while (true) {
             withFrameNanos { nowNs ->
@@ -185,30 +171,13 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 }
                 if (previousFrameNs != 0L) {
                     val frameDurationNs = nowNs - previousFrameNs
-                    frameDurationsNs += frameDurationNs
                     PerformanceProfiler.recordFrameDuration(frameDurationNs)
                 }
                 previousFrameNs = nowNs
-                frameCount++
 
                 val elapsedNs = nowNs - windowStartNs
                 if (elapsedNs >= 1_000_000_000L) {
-                    overlayFps = ((frameCount * 1_000_000_000L) / elapsedNs).toInt()
-                    overlayAvgFrameMs = if (frameCount > 1) {
-                        (frameDurationsNs.toDouble() / (frameCount - 1).toDouble() / 1_000_000.0).toFloat()
-                    } else {
-                        0f
-                    }
-
-                    val freeBytes = runtime.freeMemory()
-                    val usedBytes = runtime.totalMemory() - freeBytes
-                    overlayUsedMemMb = (usedBytes / (1024L * 1024L)).toInt()
-                    overlayFreeMemMb = (freeBytes / (1024L * 1024L)).toInt()
-                    overlayMaxMemMb = (runtime.maxMemory() / (1024L * 1024L)).toInt()
-                    overlayProfilerSnapshot = PerformanceProfiler.snapshot(windowMs = 10_000L, topN = 24)
-
-                    frameCount = 0
-                    frameDurationsNs = 0L
+                    overlayProfilerSnapshot = PerformanceProfiler.snapshot(windowMs = 10_000L, topN = 80)
                     windowStartNs = nowNs
                 }
             }
@@ -309,89 +278,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
         uiState.backgroundOverrideWindSpeedKmh.toDouble()
     } else {
         realWindSpeedKmh
-    }
-    val overlayNow = System.currentTimeMillis()
-    val overlayKey = selectedLocationKey
-    val overlayCurrentUpdatedAt = overlayKey?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
-    val overlayHourlyUpdatedAt = overlayKey?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
-    val overlayDailyUpdatedAt = overlayKey?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
-    val overlaySignatureMatch = overlayKey != null &&
-        uiState.cacheSignatureMap[overlayKey] == uiState.activeRequestSignature
-    val overlayWeather = overlayKey?.let { uiState.weatherMap[it] }
-    val overlayLocationLine = uiState.selectedLocation?.let { location ->
-        "${location.name} (${String.format(Locale.US, "%.4f", location.lat)}, ${String.format(Locale.US, "%.4f", location.lon)})"
-    } ?: "none"
-    val overlayFrameSnapshot = overlayProfilerSnapshot.frame
-    val overlayCategoriesSummary = overlayProfilerSnapshot.categories
-        .take(4)
-        .joinToString(separator = " | ") { category ->
-            "${category.category}:${formatOverlayPercent(category.sharePercent)}%"
-        }
-    val overlayLines = buildList {
-        add("PERFORMANCE")
-        add("fps=$overlayFps frame=${formatFrameMs(overlayAvgFrameMs)}ms")
-        add(
-            "frame p95=${formatFrameMs(overlayFrameSnapshot.p95FrameMs)}ms " +
-                "max=${formatFrameMs(overlayFrameSnapshot.maxFrameMs)}ms " +
-                "j16=${formatOverlayPercent(overlayFrameSnapshot.jank16Percent)}% " +
-                "j33=${formatOverlayPercent(overlayFrameSnapshot.jank33Percent)}%"
-        )
-        add("mem used=$overlayUsedMemMb MB free=$overlayFreeMemMb MB max=$overlayMaxMemMb MB")
-        add(
-            "profiled=${formatOverlayNsMs(overlayProfilerSnapshot.totalSectionNs)}ms " +
-                "window=${overlayProfilerSnapshot.windowMs / 1000L}s"
-        )
-        add("page=${pagerState.currentPage + 1}/$totalPages settled=${pagerState.settledPage + 1}")
-        add("loading=${uiState.isLoading} locating=${uiState.isLocating} follow=${uiState.isFollowMode}")
-        add("settings=${uiState.isSettingsOpen} organizer=${uiState.isOrganizerMode}")
-        add(
-            "bgOverride=${uiState.isBackgroundOverrideEnabled} preset=${
-                if (uiState.isBackgroundOverrideEnabled) overrideBackgroundPreset.label else "-"
-            }"
-        )
-        add("favorites=${favorites.size} suggestions=${uiState.suggestions.size} cache=${uiState.weatherMap.size}")
-        add("location=$overlayLocationLine")
-        add(
-            "signature=${
-                when {
-                    overlayKey == null -> "n/a"
-                    overlaySignatureMatch -> "match"
-                    else -> "mismatch"
-                }
-            }"
-        )
-        add(
-            "age current=${formatOverlayAge(overlayNow, overlayCurrentUpdatedAt)} " +
-                "hourly=${formatOverlayAge(overlayNow, overlayHourlyUpdatedAt)} " +
-                "daily=${formatOverlayAge(overlayNow, overlayDailyUpdatedAt)}"
-        )
-        if (overlayWeather != null) {
-            add(
-                "datasets current=${overlayWeather.currentWeather != null} " +
-                    "hourly=${overlayWeather.hourly != null} daily=${overlayWeather.daily != null}"
-            )
-        }
-        if (uiState.errors.isNotEmpty()) {
-            add("errors=${uiState.errors.size} first=${uiState.errors.first()}")
-        }
-        if (overlayCategoriesSummary.isNotBlank()) {
-            add("category share: $overlayCategoriesSummary")
-        }
-        if (overlayProfilerSnapshot.sections.isEmpty()) {
-            add("top components: collecting...")
-        } else {
-            add("top component cost (10s window):")
-            overlayProfilerSnapshot.sections.take(12).forEachIndexed { index, section ->
-                add(
-                    "${index + 1}. ${section.name} " +
-                        "${formatOverlayPercent(section.sharePercent)}% " +
-                        "tot=${formatOverlayNsMs(section.totalNs)}ms " +
-                        "avg=${formatOverlayNsMs(section.averageNs)}ms " +
-                        "p95=${formatOverlayNsMs(section.p95Ns)}ms " +
-                        "n=${section.sampleCount}"
-                )
-            }
-        }
     }
 
     BackHandler(enabled = uiState.isOrganizerMode || uiState.isSettingsOpen) {
@@ -727,16 +613,9 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                     .background(Color.White.copy(alpha = 0.92f))
                     .zIndex(21f)
             )
-            PerformanceOverlay(
-                lines = overlayLines,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(start = 8.dp, top = 8.dp)
-                    .zIndex(20f)
-            )
             ResourceDistributionOverlay(
                 snapshot = overlayProfilerSnapshot,
+                onDisable = { viewModel.setPerformanceOverlayEnabled(false) },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
@@ -849,38 +728,13 @@ private fun TopPageStatusStrip(
 }
 
 @Composable
-private fun PerformanceOverlay(
-    lines: List<String>,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .widthIn(max = 340.dp)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = lines.joinToString(separator = "\n"),
-            color = Color.White.copy(alpha = 0.78f),
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
-            lineHeight = 14.sp,
-            style = TextStyle(
-                shadow = Shadow(
-                    color = Color.Black,
-                    offset = Offset(0f, 0f),
-                    blurRadius = 6f
-                )
-            )
-        )
-    }
-}
-
-@Composable
 private fun ResourceDistributionOverlay(
     snapshot: PerformanceProfiler.Snapshot,
+    onDisable: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scrollState = rememberScrollState()
+    val tapInteractionSource = remember { MutableInteractionSource() }
     val categorySlices = remember(snapshot.categories, snapshot.totalSectionNs) {
         buildCategorySlices(snapshot)
     }
@@ -899,21 +753,44 @@ private fun ResourceDistributionOverlay(
             )
         }
     }
+    val noiseBreakdown = remember(snapshot.sections) {
+        buildNoiseBreakdownEntries(snapshot.sections)
+    }
+    val noiseSlices = remember(noiseBreakdown) {
+        noiseBreakdown.map { entry ->
+            DistributionSlice(
+                label = entry.label,
+                percent = entry.percentOfNoise,
+                color = entry.color
+            )
+        }
+    }
+    val noiseMetrics = remember(snapshot.sections) {
+        buildNoiseMetricSummary(snapshot.sections)
+    }
 
     Box(
         modifier = modifier
             .widthIn(min = 240.dp, max = 320.dp)
+            .fillMaxHeight(0.88f)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column(
             modifier = Modifier
+                .fillMaxHeight()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xAA111822))
+                .background(Color(0x66111822))
                 .border(
                     width = 1.dp,
-                    color = Color.White.copy(alpha = 0.22f),
+                    color = Color.White.copy(alpha = 0.14f),
                     shape = RoundedCornerShape(14.dp)
                 )
+                .clickable(
+                    interactionSource = tapInteractionSource,
+                    indication = null,
+                    onClick = onDisable
+                )
+                .verticalScroll(scrollState)
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -923,6 +800,20 @@ private fun ResourceDistributionOverlay(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp
+            )
+            val frameSnapshot = snapshot.frame
+            val averageDelayMs = frameSnapshot.averageFrameMs
+            val fps = if (averageDelayMs > 0f) 1000f / averageDelayMs else 0f
+            val perfLine = if (frameSnapshot.sampleCount > 0 && averageDelayMs > 0f) {
+                "fps=${String.format(Locale.US, "%.1f", fps)}  delay=${String.format(Locale.US, "%.1f", averageDelayMs)}ms"
+            } else {
+                "fps=-  delay=-"
+            }
+            Text(
+                text = perfLine,
+                color = Color.White.copy(alpha = 0.78f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp
             )
 
             if (snapshot.totalSectionNs <= 0L || topSections.isEmpty()) {
@@ -971,6 +862,33 @@ private fun ResourceDistributionOverlay(
                     totalMs = formatOverlayNsMs(section.totalNs),
                     color = profilerColorForKey(section.name, index)
                 )
+            }
+
+            if (noiseBreakdown.isNotEmpty() || noiseMetrics != null) {
+                Text(
+                    text = "Noise Breakdown",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                if (noiseSlices.isNotEmpty()) {
+                    SliceShareBar(slices = noiseSlices)
+                }
+
+                noiseBreakdown.take(4).forEach { entry ->
+                    DistributionSectionRow(
+                        label = "Noise/${entry.label}",
+                        percent = entry.percentOfNoise,
+                        totalMs = formatOverlayNsMs(entry.totalNs),
+                        color = entry.color
+                    )
+                }
+
+                noiseMetrics?.let { metrics ->
+                    NoiseMetricSummaryRow(metrics = metrics)
+                }
             }
 
             if (dialBreakdown.isNotEmpty()) {
@@ -1026,7 +944,7 @@ private fun CategoryPieChart(
             }
         }
         drawCircle(
-            color = Color(0xAA111822),
+            color = Color(0x55111822),
             radius = size.minDimension * 0.34f,
             center = Offset(size.width / 2f, size.height / 2f)
         )
@@ -1073,7 +991,7 @@ private fun ComponentShareBar(
             .fillMaxWidth()
             .height(10.dp)
             .clip(RoundedCornerShape(5.dp))
-            .background(Color.White.copy(alpha = 0.12f))
+            .background(Color.White.copy(alpha = 0.08f))
     ) {
         var cursor = 0f
         sections.forEachIndexed { index, section ->
@@ -1102,7 +1020,7 @@ private fun SliceShareBar(
             .fillMaxWidth()
             .height(10.dp)
             .clip(RoundedCornerShape(5.dp))
-            .background(Color.White.copy(alpha = 0.12f))
+            .background(Color.White.copy(alpha = 0.08f))
     ) {
         var cursor = 0f
         slices.forEach { slice ->
@@ -1125,6 +1043,21 @@ private data class DialBreakdownEntry(
     val percentOfDial: Float,
     val totalNs: Long,
     val color: Color
+)
+
+private data class NoiseBreakdownEntry(
+    val label: String,
+    val percentOfNoise: Float,
+    val totalNs: Long,
+    val color: Color
+)
+
+private data class NoiseMetricSummary(
+    val averagePointCount: Long?,
+    val averagePerPointNs: Long?,
+    val averageTinyPointCount: Long?,
+    val averageMediumPointCount: Long?,
+    val averageLargePointCount: Long?
 )
 
 @Composable
@@ -1164,7 +1097,7 @@ private fun DistributionSectionRow(
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color.White.copy(alpha = 0.1f))
+                .background(Color.White.copy(alpha = 0.07f))
         ) {
             Box(
                 modifier = Modifier
@@ -1175,6 +1108,28 @@ private fun DistributionSectionRow(
             )
         }
     }
+}
+
+@Composable
+private fun NoiseMetricSummaryRow(metrics: NoiseMetricSummary) {
+    val avgPoints = metrics.averagePointCount?.toString() ?: "n/a"
+    val avgPerPoint = metrics.averagePerPointNs?.let { formatOverlayNsUs(it) } ?: "n/a"
+    val radiusMix = buildList {
+        metrics.averageTinyPointCount?.let { value -> add("tiny=$value") }
+        metrics.averageMediumPointCount?.let { value -> add("mid=$value") }
+        metrics.averageLargePointCount?.let { value -> add("large=$value") }
+    }.joinToString(separator = "  ")
+
+    Text(
+        text = if (radiusMix.isNotEmpty()) {
+            "avg points=$avgPoints  avg cost=$avgPerPoint/pt  $radiusMix"
+        } else {
+            "avg points=$avgPoints  avg cost=$avgPerPoint/pt"
+        },
+        color = Color.White.copy(alpha = 0.66f),
+        fontFamily = FontFamily.Monospace,
+        fontSize = 9.sp
+    )
 }
 
 private fun hasFreshnessWarning(
@@ -1212,15 +1167,19 @@ private fun formatOverlayAge(nowMs: Long, updatedAtMs: Long): String {
     }
 }
 
-private fun formatFrameMs(frameMs: Float): String {
-    if (frameMs <= 0f) return "-"
-    return String.format(Locale.US, "%.1f", frameMs)
-}
-
 private fun formatOverlayNsMs(durationNs: Long): String {
     if (durationNs <= 0L) return "-"
     val frameMs = durationNs.toDouble() / 1_000_000.0
     return String.format(Locale.US, "%.2f", frameMs)
+}
+
+private fun formatOverlayNsUs(durationNs: Long): String {
+    if (durationNs <= 0L) return "-"
+    return if (durationNs >= 1_000L) {
+        String.format(Locale.US, "%.2f us", durationNs.toDouble() / 1_000.0)
+    } else {
+        "$durationNs ns"
+    }
 }
 
 private fun formatOverlayPercent(value: Float): String {
@@ -1279,6 +1238,64 @@ private fun buildDialBreakdownEntries(
             color = profilerColorForKey("dial/$label", index)
         )
     }
+}
+
+private fun buildNoiseBreakdownEntries(
+    sections: List<PerformanceProfiler.SectionSnapshot>
+): List<NoiseBreakdownEntry> {
+    val noiseSections = sections
+        .filter { section ->
+            section.name.startsWith("Background/Noise/Draw/") ||
+                section.name.startsWith("Background/Noise/Cache/")
+        }
+        .sortedByDescending { it.totalNs }
+    if (noiseSections.isEmpty()) return emptyList()
+
+    val totalNoiseNs = noiseSections.sumOf { it.totalNs }
+    if (totalNoiseNs <= 0L) return emptyList()
+
+    return noiseSections.take(8).mapIndexed { index, section ->
+        val label = section.name.substringAfter("Background/Noise/")
+        val percent = (section.totalNs.toDouble() / totalNoiseNs.toDouble() * 100.0).toFloat()
+        NoiseBreakdownEntry(
+            label = label,
+            percentOfNoise = percent,
+            totalNs = section.totalNs,
+            color = profilerColorForKey("noise/$label", index)
+        )
+    }
+}
+
+private fun buildNoiseMetricSummary(
+    sections: List<PerformanceProfiler.SectionSnapshot>
+): NoiseMetricSummary? {
+    fun average(name: String): Long? {
+        return sections.firstOrNull { section -> section.name == name }?.averageNs
+    }
+
+    val averagePointCount = average("Background/Noise/Metric/FramePointCount")
+    val averagePerPointNs = average("Background/Noise/Metric/PerPointNs")
+    val averageTinyPointCount = average("Background/Noise/Metric/TinyPointCount")
+    val averageMediumPointCount = average("Background/Noise/Metric/MediumPointCount")
+    val averageLargePointCount = average("Background/Noise/Metric/LargePointCount")
+
+    if (
+        averagePointCount == null &&
+        averagePerPointNs == null &&
+        averageTinyPointCount == null &&
+        averageMediumPointCount == null &&
+        averageLargePointCount == null
+    ) {
+        return null
+    }
+
+    return NoiseMetricSummary(
+        averagePointCount = averagePointCount,
+        averagePerPointNs = averagePerPointNs,
+        averageTinyPointCount = averageTinyPointCount,
+        averageMediumPointCount = averageMediumPointCount,
+        averageLargePointCount = averageLargePointCount
+    )
 }
 
 private fun compactProfilerLabel(label: String): String {

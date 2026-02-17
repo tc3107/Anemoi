@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -430,29 +431,155 @@ private fun NoiseLayer(alpha: Float) {
             .fillMaxSize()
             .drawWithCache {
                 val densityFactor = (size.width * size.height / 13_500f).toInt().coerceIn(180, 620)
+                val densityBucket = noiseDensityBucket(densityFactor)
                 val random = Random(9127)
-                val points = List(densityFactor) {
-                    Offset(
-                        x = random.nextFloat() * size.width,
-                        y = random.nextFloat() * size.height
-                    )
+                val points = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Points",
+                    category = "background-cache"
+                ) {
+                    List(densityFactor) {
+                        Offset(
+                            x = random.nextFloat() * size.width,
+                            y = random.nextFloat() * size.height
+                        )
+                    }
                 }
-                val radii = List(densityFactor) { 0.4f + random.nextFloat() * 1.1f }
-                val alphas = List(densityFactor) { (0.2f + random.nextFloat() * 0.8f) * alpha }
-
-                onDrawBehind {
-                    PerformanceProfiler.measure(name = "Background/Noise/Draw", category = "background-draw") {
-                        points.forEachIndexed { index, point ->
-                            drawCircle(
-                                color = Color.White.copy(alpha = alphas[index].coerceIn(0f, 1f)),
-                                radius = radii[index],
-                                center = point
-                            )
+                val radii = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Radii",
+                    category = "background-cache"
+                ) {
+                    List(densityFactor) { 0.4f + random.nextFloat() * 1.1f }
+                }
+                val alphas = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Alphas",
+                    category = "background-cache"
+                ) {
+                    List(densityFactor) { (0.2f + random.nextFloat() * 0.8f) * alpha }
+                }
+                val colors = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/Colors",
+                    category = "background-cache"
+                ) {
+                    List(densityFactor) { index ->
+                        Color.White.copy(alpha = alphas[index].coerceIn(0f, 1f))
+                    }
+                }
+                val radiusBands = PerformanceProfiler.measure(
+                    name = "Background/Noise/Cache/RadiusBands",
+                    category = "background-cache"
+                ) {
+                    val tiny = ArrayList<Int>(densityFactor)
+                    val medium = ArrayList<Int>(densityFactor)
+                    val large = ArrayList<Int>(densityFactor)
+                    radii.forEachIndexed { index, radius ->
+                        when {
+                            radius <= 0.75f -> tiny += index
+                            radius <= 1.1f -> medium += index
+                            else -> large += index
                         }
                     }
+                    NoiseRadiusBands(
+                        tiny = tiny,
+                        medium = medium,
+                        large = large
+                    )
+                }
+
+                onDrawBehind {
+                    val drawStartNs = System.nanoTime()
+                    PerformanceProfiler.measure(
+                        name = "Background/Noise/Draw/$densityBucket/Tiny",
+                        category = "background-draw"
+                    ) {
+                        drawNoiseBand(
+                            indices = radiusBands.tiny,
+                            points = points,
+                            colors = colors,
+                            radii = radii
+                        )
+                    }
+                    PerformanceProfiler.measure(
+                        name = "Background/Noise/Draw/$densityBucket/Medium",
+                        category = "background-draw"
+                    ) {
+                        drawNoiseBand(
+                            indices = radiusBands.medium,
+                            points = points,
+                            colors = colors,
+                            radii = radii
+                        )
+                    }
+                    PerformanceProfiler.measure(
+                        name = "Background/Noise/Draw/$densityBucket/Large",
+                        category = "background-draw"
+                    ) {
+                        drawNoiseBand(
+                            indices = radiusBands.large,
+                            points = points,
+                            colors = colors,
+                            radii = radii
+                        )
+                    }
+                    val drawDurationNs = System.nanoTime() - drawStartNs
+                    val safePointCount = densityFactor.coerceAtLeast(1)
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/PerPointNs",
+                        durationNs = drawDurationNs / safePointCount.toLong(),
+                        category = "background-metric"
+                    )
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/FramePointCount",
+                        durationNs = safePointCount.toLong(),
+                        category = "background-metric"
+                    )
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/TinyPointCount",
+                        durationNs = radiusBands.tiny.size.toLong(),
+                        category = "background-metric"
+                    )
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/MediumPointCount",
+                        durationNs = radiusBands.medium.size.toLong(),
+                        category = "background-metric"
+                    )
+                    PerformanceProfiler.record(
+                        name = "Background/Noise/Metric/LargePointCount",
+                        durationNs = radiusBands.large.size.toLong(),
+                        category = "background-metric"
+                    )
                 }
             }
     )
+}
+
+private data class NoiseRadiusBands(
+    val tiny: List<Int>,
+    val medium: List<Int>,
+    val large: List<Int>
+)
+
+private fun DrawScope.drawNoiseBand(
+    indices: List<Int>,
+    points: List<Offset>,
+    colors: List<Color>,
+    radii: List<Float>
+) {
+    indices.forEach { index ->
+        drawCircle(
+            color = colors[index],
+            radius = radii[index],
+            center = points[index]
+        )
+    }
+}
+
+private fun noiseDensityBucket(pointCount: Int): String {
+    return when {
+        pointCount >= 560 -> "VeryHigh"
+        pointCount >= 450 -> "High"
+        pointCount >= 320 -> "Medium"
+        else -> "Low"
+    }
 }
 
 private fun buildParticles(mode: ParticleMode, seed: Int): List<ParticleSpec> {
