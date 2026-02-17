@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="assets/logo/logo.svg" width="240" alt="Anemoi logo" />
+  <img src="assets/icon/icon.svg" width="240" alt="Anemoi logo" />
 </p>
 
 # Anemoi
 
-Anemoi is an Android weather app built with Jetpack Compose. It combines live location, place search, and forecast visualization in a single mobile-first interface.
+Anemoi is a modern Android weather app focused on fast glanceability, a sleek UI, and practical location privacy controls.
 
-## Features
+## Key Features
 
-- Current, hourly, and daily weather data
-- Place search with geocoding suggestions
-- Live GPS location and follow mode
-- Favorites and location organization
-- Dynamic weather-reactive visual background
-- Adjustable display and privacy settings (including coordinate obfuscation modes)
+- Sleek, modern UI with weather-reactive animated backgrounds
+- Fast weather at a glance: current, hourly, and daily forecasts
+- Powerful location controls: search, live GPS follow mode, and favorites
+- Privacy-first location grid obfuscation (1 km to 50 km)
+- Home screen widget support with adaptive layouts
+- Free to use, with no telemetry
 
 ## Tech Stack
 
@@ -23,46 +23,20 @@ Anemoi is an Android weather app built with Jetpack Compose. It combines live lo
 - Google Play Services Location
 - AndroidX DataStore
 
-## Requirements
+## Package ID
 
-- JDK 17
-- Android SDK 35
-- Android Studio with current Android Gradle Plugin support
+- `com.tudorc.anemoi`
 
-## Getting Started
+## Releases
 
-1. Clone the repository.
-2. Ensure `local.properties` points to your Android SDK path.
-3. Build and run:
+Releases are published on this GitHub repository's Releases page.
 
-```bash
-./gradlew :app:assembleDebug
-```
-
-To run unit tests:
-
-```bash
-./gradlew test
-```
-
-## Data Sources and Attribution
+## Data Sources
 
 - Geocoding: OpenStreetMap Nominatim API
 - Forecasts: Open-Meteo API
 
 No private API key is required for the current implementation.
-
-## Contributing
-
-See `CONTRIBUTING.md` for development workflow and pull request expectations.
-
-## Release Process
-
-See `RELEASING.md` for versioning and release checklist details.
-
-## Security
-
-See `SECURITY.md` for responsible vulnerability disclosure.
 
 ## Notice
 

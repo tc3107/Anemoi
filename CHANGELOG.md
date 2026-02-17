@@ -1,5 +1,5 @@
 # Changelog
 
-This file is intentionally a placeholder.
+## v1.0.0
 
-Changelog entries will begin once formal tagged releases are in use.
+- First release.
