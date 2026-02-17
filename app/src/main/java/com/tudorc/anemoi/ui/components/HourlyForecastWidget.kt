@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -39,8 +40,6 @@ import com.tudorc.anemoi.R
 import com.tudorc.anemoi.data.TempUnit
 import com.tudorc.anemoi.util.formatTemp
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
 import java.util.Calendar
 import java.util.Locale
 
@@ -106,6 +105,7 @@ fun HourlyForecastWidget(
         LazyListState(firstVisibleItemIndex = initialVisibleItemIndex)
     }
     var lastEdgeHit by remember { mutableIntStateOf(0) } // -1 = start, 1 = end
+    var edgeSessionStarted by remember { mutableStateOf(false) }
     val iconResByCode = remember(forecastItems) {
         forecastItems
             .asSequence()
@@ -129,12 +129,8 @@ fun HourlyForecastWidget(
                     !listState.canScrollForward -> 1
                     else -> 0
                 }
-                if (edge != 0 && edge != lastEdgeHit) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    lastEdgeHit = edge
-                }
                 // Consume horizontal leftovers from edge drags so page swipes don't trigger.
-                return Offset(x = available.x, y = 0f)
+                return if (edge != 0) Offset(x = available.x, y = 0f) else Offset.Zero
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
@@ -146,31 +142,30 @@ fun HourlyForecastWidget(
                     !listState.canScrollForward -> 1
                     else -> 0
                 }
-                if (edge != 0 && edge != lastEdgeHit) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    lastEdgeHit = edge
-                }
                 // Also absorb horizontal fling leftovers at row edges.
-                return Velocity(x = available.x, y = 0f)
+                return if (edge != 0) Velocity(x = available.x, y = 0f) else Velocity.Zero
             }
         }
     }
     LaunchedEffect(listState) {
         snapshotFlow { Triple(listState.isScrollInProgress, listState.canScrollBackward, listState.canScrollForward) }
-            .map { (isScrolling, canScrollBack, canScrollForward) ->
-                if (!isScrolling) {
-                    0
-                } else {
-                    when {
-                        !canScrollBack -> -1
-                        !canScrollForward -> 1
-                        else -> 0
-                    }
-                }
-            }
             .distinctUntilChanged()
-            .filter { edge -> edge != 0 || lastEdgeHit != 0 }
-            .collect { edge ->
+            .collect { (isScrolling, canScrollBack, canScrollForward) ->
+                val edge = when {
+                    !isScrolling -> 0
+                    !canScrollBack -> -1
+                    !canScrollForward -> 1
+                    else -> 0
+                }
+                if (!isScrolling) {
+                    edgeSessionStarted = false
+                    return@collect
+                }
+                if (!edgeSessionStarted) {
+                    edgeSessionStarted = true
+                    lastEdgeHit = edge
+                    return@collect
+                }
                 if (edge == 0) {
                     lastEdgeHit = 0
                 } else if (edge != lastEdgeHit) {
