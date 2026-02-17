@@ -192,147 +192,149 @@ fun HourlyForecastWidget(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "HOURLY CONDITIONS",
-                    color = Color.White.copy(alpha = 0.4f),
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "HOURLY CONDITIONS",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .nestedScroll(blockParentPagerScroll)
-                ) {
-                    LazyRow(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        contentPadding = PaddingValues(
-                            start = contentPaddingStart,
-                            end = contentPaddingStart,
-                            top = 8.dp,
-                            bottom = 8.dp
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(itemSpacing)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .nestedScroll(blockParentPagerScroll)
                     ) {
-                        item { EndDivider() }
+                        LazyRow(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            contentPadding = PaddingValues(
+                                start = contentPaddingStart,
+                                end = contentPaddingStart,
+                                top = 8.dp,
+                                bottom = 8.dp
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(itemSpacing)
+                        ) {
+                            item { EndDivider() }
 
-                        itemsIndexed(
-                            items = forecastItems,
-                            key = { _, item -> item.fullTime }
-                        ) { _, item ->
-                            val tileShape = RoundedCornerShape(16.dp)
+                            itemsIndexed(
+                                items = forecastItems,
+                                key = { _, item -> item.fullTime }
+                            ) { _, item ->
+                                val tileShape = RoundedCornerShape(16.dp)
 
-                            Box(
-                                modifier = Modifier
-                                    .width(itemWidth)
-                                    .fillMaxHeight()
-                                    .clip(tileShape)
-                            ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .width(itemWidth)
+                                        .fillMaxHeight()
                                         .clip(tileShape)
-                                        .background(
-                                            if (item.isCurrent) Color.White.copy(alpha = 0.22f)
-                                            else Color.White.copy(alpha = 0.1f)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.28f)
-                                            else Color.White.copy(alpha = 0.14f),
-                                            shape = tileShape
-                                        )
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(vertical = 10.dp, horizontal = 6.dp)
-                                            .offset(y = (-2).dp),
-                                        verticalArrangement = Arrangement.Center
+                                            .clip(tileShape)
+                                            .background(
+                                                if (item.isCurrent) Color.White.copy(alpha = 0.22f)
+                                                else Color.White.copy(alpha = 0.1f)
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (item.isCurrent) Color.White.copy(alpha = 0.28f)
+                                                else Color.White.copy(alpha = 0.14f),
+                                                shape = tileShape
+                                            )
                                     ) {
-                                        Text(
-                                            text = formatTemp(item.temperature, tempUnit),
-                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
-                                            fontSize = 13.sp,
-                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                            textAlign = TextAlign.Center
-                                        )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(vertical = 10.dp, horizontal = 6.dp)
+                                                .offset(y = (-2).dp),
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text(
+                                                text = formatTemp(item.temperature, tempUnit),
+                                                color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
+                                                fontSize = 13.sp,
+                                                fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                textAlign = TextAlign.Center
+                                            )
 
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                            Spacer(modifier = Modifier.height(4.dp))
 
-                                        val iconResId = iconResByCode[item.weatherCode] ?: 0
+                                            val iconResId = iconResByCode[item.weatherCode] ?: 0
 
-                                        Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                                            if (iconResId != 0) {
-                                                Image(
-                                                    painter = painterResource(id = iconResId),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
-                                                )
-                                            } else {
-                                                FallbackCircle()
+                                            Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                                                if (iconResId != 0) {
+                                                    Image(
+                                                        painter = painterResource(id = iconResId),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        colorFilter = ColorFilter.tint(Color(0xFFD6D9DE))
+                                                    )
+                                                } else {
+                                                    FallbackCircle()
+                                                }
                                             }
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+
+                                            Text(
+                                                text = item.displayHour,
+                                                color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
+                                                fontSize = 14.sp,
+                                                fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
                                         }
-
-                                        Spacer(modifier = Modifier.height(4.dp))
-
-                                        Text(
-                                            text = item.displayHour,
-                                            color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
-                                            fontSize = 14.sp,
-                                            fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                            textAlign = TextAlign.Center,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
                                     }
                                 }
                             }
+
+                            item { EndDivider() }
                         }
-
-                        item { EndDivider() }
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .fillMaxHeight()
-                            .width(14.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = 0.12f),
-                                        Color.Transparent
-                                    )
-                                )
-                            )
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .width(14.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.White.copy(alpha = 0.12f)
-                                    )
-                                )
-                            )
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(14.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.12f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(14.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.12f)
+                                )
+                            )
+                        )
+                )
             }
         }
     }
