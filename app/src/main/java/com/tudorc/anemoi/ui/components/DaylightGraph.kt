@@ -163,8 +163,8 @@ fun DaylightGraph(
             drawLine(
                 brush = Brush.horizontalGradient(
                     0.0f to Color.Transparent,
-                    0.2f to Color.Gray.copy(alpha = 0.3f),
-                    0.8f to Color.Gray.copy(alpha = 0.3f),
+                    0.2f to Color.White.copy(alpha = 0.26f),
+                    0.8f to Color.White.copy(alpha = 0.26f),
                     1.0f to Color.Transparent
                 ),
                 start = Offset(0f, daylineY),
@@ -202,9 +202,10 @@ fun DaylightGraph(
             
             if (isEphemerisAvailable) {
                 val dottedEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                val dashedLineColor = Color.White.copy(alpha = 0.26f)
                 
                 drawLine(
-                    color = Color.Gray.copy(alpha = 0.4f),
+                    color = dashedLineColor,
                     start = Offset(riseX, crossingY),
                     end = Offset(riseX, topPadding),
                     pathEffect = dottedEffect,
@@ -212,7 +213,7 @@ fun DaylightGraph(
                 )
                 
                 drawLine(
-                    color = Color.Gray.copy(alpha = 0.4f),
+                    color = dashedLineColor,
                     start = Offset(setX, crossingY),
                     end = Offset(setX, topPadding),
                     pathEffect = dottedEffect,
@@ -220,7 +221,7 @@ fun DaylightGraph(
                 )
 
                 drawLine(
-                    color = Color.Gray.copy(alpha = 0.4f),
+                    color = dashedLineColor,
                     start = Offset(peakX, peakY),
                     end = Offset(peakX, height - bottomPadding),
                     pathEffect = dottedEffect,
