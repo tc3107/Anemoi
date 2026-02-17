@@ -284,21 +284,21 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         }
                     }
                     
-                    Text(
-                        "Warnings",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-                    )
+                    if (hasOutdatedData) {
+                        Text(
+                            "Warnings",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                        )
 
-                    GlassEntryCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Column {
-                            if (hasOutdatedData) {
+                        GlassEntryCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Column {
                                 warningDetails.forEach { detail ->
                                     Text(
                                         text = "• $detail",
@@ -307,51 +307,44 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                         lineHeight = 16.sp
                                     )
                                 }
-                            } else {
+
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "No active weather warnings.",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
+                                    text = "A subtle status line under H/L appears when cached weather is stale or mode-mismatched. Tap it for refresh details.",
+                                    color = Color.White.copy(alpha = 0.78f),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
                                 )
-                            }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "A subtle status line under H/L appears when cached weather is stale or mode-mismatched. Tap it for refresh details.",
-                                color = Color.White.copy(alpha = 0.78f),
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            )
-
-                            if (showCompassAccessButton) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                OutlinedButton(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        requestCompassSensorAccess(context)
-                                    },
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = Color.Transparent,
-                                        contentColor = Color.White
-                                    ),
-                                    border = BorderStroke(
-                                        width = 1.dp,
-                                        brush = Brush.horizontalGradient(
-                                            colors = listOf(
-                                                Color.White.copy(alpha = 0.45f),
-                                                Color.White.copy(alpha = 0.20f)
+                                if (showCompassAccessButton) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            requestCompassSensorAccess(context)
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = Color.Transparent,
+                                            contentColor = Color.White
+                                        ),
+                                        border = BorderStroke(
+                                            width = 1.dp,
+                                            brush = Brush.horizontalGradient(
+                                                colors = listOf(
+                                                    Color.White.copy(alpha = 0.45f),
+                                                    Color.White.copy(alpha = 0.20f)
+                                                )
                                             )
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Request Sensor Access",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
                                         )
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "Request Sensor Access",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    }
                                 }
                             }
                         }
