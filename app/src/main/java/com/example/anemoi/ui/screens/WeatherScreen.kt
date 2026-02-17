@@ -869,10 +869,30 @@ private fun ResourceDistributionOverlay(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    categorySlices.take(4).forEach { slice ->
+                    categorySlices.forEach { slice ->
                         DistributionLegendRow(slice = slice)
                     }
                 }
+            }
+
+            Text(
+                text = "Category Share",
+                color = Color.White.copy(alpha = 0.75f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            categorySlices.forEach { slice ->
+                val totalNs = ((snapshot.totalSectionNs.toDouble() * slice.percent.toDouble()) / 100.0)
+                    .toLong()
+                    .coerceAtLeast(0L)
+                DistributionSectionRow(
+                    label = compactProfilerLabel(slice.label),
+                    percent = slice.percent,
+                    totalMs = formatOverlayNsMs(totalNs),
+                    color = slice.color
+                )
             }
 
             Text(
@@ -1367,8 +1387,15 @@ private fun buildCategorySlices(
         return emptyList()
     }
 
-    val slices = snapshot.categories
-        .take(6)
+    val profilerCategory = snapshot.categories.firstOrNull { it.category == "profiler" }
+    val nonProfilerCategories = snapshot.categories.filterNot { it.category == "profiler" }
+    val primaryCategories = if (profilerCategory != null) {
+        nonProfilerCategories.take(5) + profilerCategory
+    } else {
+        nonProfilerCategories.take(6)
+    }
+
+    val slices = primaryCategories
         .mapIndexed { index, category ->
             DistributionSlice(
                 label = category.category,
@@ -1378,14 +1405,40 @@ private fun buildCategorySlices(
         }
         .toMutableList()
 
-    val usedPercent = slices.sumOf { it.percent.toDouble() }.toFloat()
-    val remainder = (100f - usedPercent).coerceIn(0f, 100f)
-    if (remainder >= 0.25f) {
-        slices += DistributionSlice(
-            label = "other",
-            percent = remainder,
-            color = Color.White.copy(alpha = 0.28f)
-        )
+    val remainingCategories = snapshot.categories
+        .filterNot { candidate -> primaryCategories.any { it.category == candidate.category } }
+        .sortedByDescending { it.sharePercent }
+
+    if (remainingCategories.isNotEmpty()) {
+        if (remainingCategories.size <= 3) {
+            remainingCategories.forEach { category ->
+                slices += DistributionSlice(
+                    label = "other/${category.category}",
+                    percent = category.sharePercent.coerceIn(0f, 100f),
+                    color = profilerColorForKey("other/${category.category}", 0)
+                )
+            }
+        } else {
+            remainingCategories.take(2).forEach { category ->
+                slices += DistributionSlice(
+                    label = "other/${category.category}",
+                    percent = category.sharePercent.coerceIn(0f, 100f),
+                    color = profilerColorForKey("other/${category.category}", 0)
+                )
+            }
+            val miscPercent = remainingCategories
+                .drop(2)
+                .sumOf { it.sharePercent.toDouble() }
+                .toFloat()
+                .coerceIn(0f, 100f)
+            if (miscPercent >= 0.25f) {
+                slices += DistributionSlice(
+                    label = "other/misc",
+                    percent = miscPercent,
+                    color = profilerColorForKey("other/misc", 0)
+                )
+            }
+        }
     }
     return slices
 }
@@ -1675,7 +1728,7 @@ private fun compactWidgetLabel(label: String): String {
 private fun profilerColorForKey(key: String, indexHint: Int): Color {
     val palette = profilerPalette
     if (palette.isEmpty()) return Color.White
-    val seed = (key.hashCode() and Int.MAX_VALUE) + indexHint
+    val seed = key.hashCode() and Int.MAX_VALUE
     return palette[seed % palette.size]
 }
 

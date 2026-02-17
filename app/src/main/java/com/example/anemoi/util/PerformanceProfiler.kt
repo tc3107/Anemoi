@@ -7,6 +7,11 @@ import kotlin.math.roundToInt
 object PerformanceProfiler {
     private const val maxSectionSamples = 1200
     private const val maxFrameSamples = 2400
+    private const val profilerCategory = "profiler"
+    private const val profilerMeasureOverheadName = "Profiler/Internal/MeasureBookkeeping"
+    private const val profilerRecordOverheadName = "Profiler/Internal/Record"
+    private const val profilerFrameRecordOverheadName = "Profiler/Internal/FrameRecord"
+    private const val profilerSnapshotOverheadName = "Profiler/Internal/Snapshot"
 
     private val enabled = AtomicBoolean(false)
     private val lock = Any()
@@ -89,27 +94,45 @@ object PerformanceProfiler {
         return try {
             block()
         } finally {
-            record(name = name, durationNs = (System.nanoTime() - startNs), category = category)
+            val afterBlockNs = System.nanoTime()
+            record(name = name, durationNs = (afterBlockNs - startNs), category = category)
+            val bookkeepingNs = System.nanoTime() - afterBlockNs
+            recordInternal(
+                name = profilerMeasureOverheadName,
+                durationNs = bookkeepingNs
+            )
         }
     }
 
     fun record(name: String, durationNs: Long, category: String = "general") {
         if (!enabled.get() || durationNs <= 0L) return
-        val nowNs = System.nanoTime()
+        val startNs = System.nanoTime()
+        val nowNs = startNs
         synchronized(lock) {
             val section = sections.getOrPut(name) {
                 SectionBuffer(category = category, capacity = maxSectionSamples)
             }
             section.add(timestampNs = nowNs, durationNs = durationNs)
         }
+        val overheadNs = System.nanoTime() - startNs
+        recordInternal(
+            name = profilerRecordOverheadName,
+            durationNs = overheadNs
+        )
     }
 
     fun recordFrameDuration(durationNs: Long) {
         if (!enabled.get() || durationNs <= 0L) return
-        val nowNs = System.nanoTime()
+        val startNs = System.nanoTime()
+        val nowNs = startNs
         synchronized(lock) {
             frameBuffer.add(timestampNs = nowNs, valueNs = durationNs)
         }
+        val overheadNs = System.nanoTime() - startNs
+        recordInternal(
+            name = profilerFrameRecordOverheadName,
+            durationNs = overheadNs
+        )
     }
 
     fun snapshot(
@@ -117,10 +140,12 @@ object PerformanceProfiler {
         topN: Int = 12
     ): Snapshot {
         if (windowMs <= 0L) return Snapshot.Empty
+        if (!enabled.get()) return Snapshot.Empty
+        val startNs = System.nanoTime()
         val nowNs = System.nanoTime()
         val windowNs = windowMs * 1_000_000L
 
-        synchronized(lock) {
+        val result = synchronized(lock) {
             val rawSectionStats = sections.mapNotNull { (name, section) ->
                 section.snapshot(name = name, nowNs = nowNs, windowNs = windowNs)
             }
@@ -166,13 +191,30 @@ object PerformanceProfiler {
                     )
                 }
 
-            return Snapshot(
+            Snapshot(
                 windowMs = windowMs,
                 sections = rankedSections,
                 categories = rankedCategories,
                 frame = frameBuffer.frameSnapshot(nowNs = nowNs, windowNs = windowNs),
                 totalSectionNs = totalSectionNs
             )
+        }
+        val overheadNs = System.nanoTime() - startNs
+        recordInternal(
+            name = profilerSnapshotOverheadName,
+            durationNs = overheadNs
+        )
+        return result
+    }
+
+    private fun recordInternal(name: String, durationNs: Long) {
+        if (!enabled.get() || durationNs <= 0L) return
+        val nowNs = System.nanoTime()
+        synchronized(lock) {
+            val section = sections.getOrPut(name) {
+                SectionBuffer(category = profilerCategory, capacity = maxSectionSamples)
+            }
+            section.add(timestampNs = nowNs, durationNs = durationNs)
         }
     }
 
