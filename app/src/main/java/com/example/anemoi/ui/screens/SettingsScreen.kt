@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +51,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val haptic = LocalHapticFeedback.current
     val compassSensorAccessState = rememberCompassSensorAccessState()
     var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
@@ -211,58 +213,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                         .verticalScroll(settingsScrollState)
                 ) {
                     Text(
-                        "Units",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-
-                    GlassEntryCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Column {
-                            Text("Temperature", color = Color.White, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            val tempOptions = TempUnit.values().map { 
-                                when(it) {
-                                    TempUnit.CELSIUS -> "°C"
-                                    TempUnit.FAHRENHEIT -> "°F"
-                                    TempUnit.KELVIN -> "K"
-                                }
-                            }
-                            SegmentedSelector(
-                                options = tempOptions,
-                                selectedIndex = TempUnit.values().indexOf(uiState.tempUnit),
-                                onOptionSelected = { viewModel.setTempUnit(TempUnit.values()[it]) }
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Pressure", color = Color.White, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            SegmentedSelector(
-                                options = PressureUnit.values().map { it.label },
-                                selectedIndex = PressureUnit.values().indexOf(uiState.pressureUnit),
-                                onOptionSelected = { viewModel.setPressureUnit(PressureUnit.values()[it]) }
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Wind Speed", color = Color.White, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            SegmentedSelector(
-                                options = WindUnit.values().map { it.label },
-                                selectedIndex = WindUnit.values().indexOf(uiState.windUnit),
-                                onOptionSelected = { viewModel.setWindUnit(WindUnit.values()[it]) }
-                            )
-                        }
-                    }
-
-                    Text(
                         "Location Privacy",
                         color = Color.White,
                         fontSize = 18.sp,
@@ -335,21 +285,6 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     }
                     
                     Text(
-                        "About Privacy Mode",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
-                    )
-                    Text(
-                        "Snaps your location to a grid and adds random jitter. This protects your exact coordinates while still providing relevant weather data for your general area.",
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-
-                    Text(
                         "Warnings",
                         color = Color.White,
                         fontSize = 18.sp,
@@ -419,6 +354,116 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    Text(
+                        "Units",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                    )
+
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Column {
+                            Text("Temperature", color = Color.White, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val tempOptions = TempUnit.values().map {
+                                when (it) {
+                                    TempUnit.CELSIUS -> "°C"
+                                    TempUnit.FAHRENHEIT -> "°F"
+                                    TempUnit.KELVIN -> "K"
+                                }
+                            }
+                            SegmentedSelector(
+                                options = tempOptions,
+                                selectedIndex = TempUnit.values().indexOf(uiState.tempUnit),
+                                onOptionSelected = { viewModel.setTempUnit(TempUnit.values()[it]) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Pressure", color = Color.White, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            SegmentedSelector(
+                                options = PressureUnit.values().map { it.label },
+                                selectedIndex = PressureUnit.values().indexOf(uiState.pressureUnit),
+                                onOptionSelected = { viewModel.setPressureUnit(PressureUnit.values()[it]) }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Wind Speed", color = Color.White, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            SegmentedSelector(
+                                options = WindUnit.values().map { it.label },
+                                selectedIndex = WindUnit.values().indexOf(uiState.windUnit),
+                                onOptionSelected = { viewModel.setWindUnit(WindUnit.values()[it]) }
+                            )
+                        }
+                    }
+
+                    Text(
+                        "About / Help",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                    )
+
+                    GlassEntryCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "More info and updates:",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                text = "github.com/tc3107/Anemoi",
+                                color = Color(0xFF9FD0FF),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        uriHandler.openUri("https://github.com/tc3107/Anemoi")
+                                    }
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = "Privacy",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Contacts: Open-Meteo (weather) and OpenStreetMap Nominatim (place search). Your location is only used to fetch local weather, saved places/settings stay on-device, and Anemoi itself collects no telemetry.",
+                                color = Color.White.copy(alpha = 0.78f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Grid obfuscation hides your exact spot. Instead of using your precise location, the app uses a nearby area (based on your chosen grid size) so you still get local weather without sharing your exact coordinates.",
+                                color = Color.White.copy(alpha = 0.78f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
                         }
                     }
 
