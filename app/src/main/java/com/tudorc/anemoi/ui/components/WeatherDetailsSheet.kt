@@ -21,15 +21,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Velocity
 import com.tudorc.anemoi.util.PerformanceProfiler
 import com.tudorc.anemoi.util.WeatherFreshnessConfig
 import com.tudorc.anemoi.viewmodel.WeatherUiState
@@ -51,6 +56,45 @@ fun WeatherDetailsSheet(
     val haptic = LocalHapticFeedback.current
     val detailsScrollState = rememberScrollState()
     var lastVerticalEdgeHit by remember { mutableStateOf(0) } // -1 = top, 1 = bottom
+    val momentumEdgeHaptics = remember(haptic, detailsScrollState) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source != NestedScrollSource.UserInput || available.y == 0f || detailsScrollState.maxValue <= 0) {
+                    return Offset.Zero
+                }
+                val edge = when {
+                    detailsScrollState.value <= 0 -> -1
+                    detailsScrollState.value >= detailsScrollState.maxValue -> 1
+                    else -> 0
+                }
+                if (edge != 0 && edge != lastVerticalEdgeHit) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    lastVerticalEdgeHit = edge
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                if (available.y == 0f || detailsScrollState.maxValue <= 0) {
+                    return Velocity.Zero
+                }
+                val edge = when {
+                    detailsScrollState.value <= 0 -> -1
+                    detailsScrollState.value >= detailsScrollState.maxValue -> 1
+                    else -> 0
+                }
+                if (edge != 0 && edge != lastVerticalEdgeHit) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    lastVerticalEdgeHit = edge
+                }
+                return Velocity.Zero
+            }
+        }
+    }
     if (resetScrollKey != null) {
         LaunchedEffect(resetScrollKey) {
             detailsScrollState.scrollTo(0)
@@ -298,6 +342,7 @@ fun WeatherDetailsSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .nestedScroll(momentumEdgeHaptics)
                         .verticalScroll(
                             state = detailsScrollState,
                             enabled = isExpanded || !showHandle

@@ -114,7 +114,7 @@ fun HourlyForecastWidget(
             .associateWith(::getWeatherIconRes)
     }
     val surfaceShape = RoundedCornerShape(28.dp)
-    val blockParentPagerScroll = remember {
+    val blockParentPagerScroll = remember(haptic, listState) {
         object : NestedScrollConnection {
             override fun onPostScroll(
                 consumed: Offset,
@@ -124,6 +124,15 @@ fun HourlyForecastWidget(
                 if (source != NestedScrollSource.UserInput || available.x == 0f) {
                     return Offset.Zero
                 }
+                val edge = when {
+                    !listState.canScrollBackward -> -1
+                    !listState.canScrollForward -> 1
+                    else -> 0
+                }
+                if (edge != 0 && edge != lastEdgeHit) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    lastEdgeHit = edge
+                }
                 // Consume horizontal leftovers from edge drags so page swipes don't trigger.
                 return Offset(x = available.x, y = 0f)
             }
@@ -131,6 +140,15 @@ fun HourlyForecastWidget(
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 if (available.x == 0f) {
                     return Velocity.Zero
+                }
+                val edge = when {
+                    !listState.canScrollBackward -> -1
+                    !listState.canScrollForward -> 1
+                    else -> 0
+                }
+                if (edge != 0 && edge != lastEdgeHit) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    lastEdgeHit = edge
                 }
                 // Also absorb horizontal fling leftovers at row edges.
                 return Velocity(x = available.x, y = 0f)
