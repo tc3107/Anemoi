@@ -403,7 +403,7 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                     }
 
                     Text(
-                        "About / Help",
+                        "About / Support",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -421,18 +421,34 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 color = Color.White.copy(alpha = 0.85f),
                                 fontSize = 12.sp
                             )
-                            Text(
-                                text = "github.com/tc3107/Anemoi",
-                                color = Color(0xFF9FD0FF),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        uriHandler.openUri("https://github.com/tc3107/Anemoi")
-                                    }
-                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    uriHandler.openUri("https://github.com/tc3107/Anemoi")
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White.copy(alpha = 0.12f),
+                                    contentColor = Color.White
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.45f),
+                                            Color.White.copy(alpha = 0.20f)
+                                        )
+                                    )
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = "View Anemoi on GitHub",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -457,6 +473,36 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
                             )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    uriHandler.openUri("https://ko-fi.com/tc3107")
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color.White.copy(alpha = 0.12f),
+                                    contentColor = Color.White
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.45f),
+                                            Color.White.copy(alpha = 0.20f)
+                                        )
+                                    )
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = "Support Development",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
 
