@@ -1,10 +1,13 @@
 package com.example.anemoi.ui.theme
 
 import android.os.Build
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -14,6 +17,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun AnemoiTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
@@ -27,7 +31,10 @@ fun AnemoiTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+        typography = Typography
+    ) {
+        CompositionLocalProvider(LocalRippleConfiguration provides null) {
+            content()
+        }
+    }
 }
