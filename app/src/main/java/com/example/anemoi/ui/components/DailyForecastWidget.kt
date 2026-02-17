@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
@@ -257,16 +256,11 @@ fun DailyForecastWidget(
                         fallbackTimeIso = dayHourlyPoints.firstOrNull()?.timeIso
                     )
                 }
-                val rowBackgroundAlpha by animateFloatAsState(
-                    targetValue = if (isExpanded) 0.12f else 0f,
-                    label = "daily_row_background"
-                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(38.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = rowBackgroundAlpha))
                         .clickable {
                             if (isExpanded) {
                                 expandedRowIndex = -1
