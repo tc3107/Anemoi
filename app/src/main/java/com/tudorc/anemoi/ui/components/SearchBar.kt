@@ -36,7 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tudorc.anemoi.data.LocationItem
+import com.tudorc.anemoi.util.CoordinateInputParser
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -209,18 +211,38 @@ fun SearchBar(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
+                            val submittedLocation = coordinateLocationFromQuery(query)
+                            if (submittedLocation != null) {
+                                onLocationSelected(submittedLocation)
+                                focusManager.clearFocus()
+                            }
                             suppressNextKeyboardDismissClear = true
                             keyboardController?.hide()
                         },
                         onDone = {
+                            val submittedLocation = coordinateLocationFromQuery(query)
+                            if (submittedLocation != null) {
+                                onLocationSelected(submittedLocation)
+                                focusManager.clearFocus()
+                            }
                             suppressNextKeyboardDismissClear = true
                             keyboardController?.hide()
                         },
                         onGo = {
+                            val submittedLocation = coordinateLocationFromQuery(query)
+                            if (submittedLocation != null) {
+                                onLocationSelected(submittedLocation)
+                                focusManager.clearFocus()
+                            }
                             suppressNextKeyboardDismissClear = true
                             keyboardController?.hide()
                         },
                         onSend = {
+                            val submittedLocation = coordinateLocationFromQuery(query)
+                            if (submittedLocation != null) {
+                                onLocationSelected(submittedLocation)
+                                focusManager.clearFocus()
+                            }
                             suppressNextKeyboardDismissClear = true
                             keyboardController?.hide()
                         }
@@ -340,4 +362,18 @@ fun SearchBar(
             }
         }
     }
+}
+
+private fun coordinateLocationFromQuery(query: String): LocationItem? {
+    val parsed = CoordinateInputParser.parse(query.trim()) ?: return null
+    return LocationItem(
+        name = "${formatCoordinate(parsed.lat)}, ${formatCoordinate(parsed.lon)}",
+        lat = parsed.lat,
+        lon = parsed.lon
+    )
+}
+
+private fun formatCoordinate(value: Double): String {
+    val fixed = String.format(Locale.US, "%.6f", value)
+    return fixed.trimEnd('0').trimEnd('.')
 }
