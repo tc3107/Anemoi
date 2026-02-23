@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.1 - 2026-02-23
+
+- Added per-category minimum visual range floors for particulate and pollen bars to prevent stable periods from rendering as near-full bars.
+
 ## v1.1.0 - 2026-02-23
 
 - Added particulates widget with normalized air quality and pollen ranges.

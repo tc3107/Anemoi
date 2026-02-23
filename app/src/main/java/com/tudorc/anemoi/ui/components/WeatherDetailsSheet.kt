@@ -286,7 +286,10 @@ fun WeatherDetailsSheet(
                         values = values
                     ),
                     todayMax = todayMax,
-                    rangeMax = rangeMax
+                    rangeMax = applyParticulateVisualRangeFloor(
+                        label = label,
+                        rangeMax = rangeMax
+                    )
                 )
             }
 
@@ -327,7 +330,10 @@ fun WeatherDetailsSheet(
                         values = values
                     ),
                     todayMax = todayMax,
-                    rangeMax = rangeMax
+                    rangeMax = applyParticulateVisualRangeFloor(
+                        label = label,
+                        rangeMax = rangeMax
+                    )
                 )
             }
 
@@ -778,5 +784,26 @@ private fun mergedHourlyMax(vararg series: List<Double?>?): List<Double?> {
             }
             .filter { it.isFinite() }
             .maxOrNull()
+    }
+}
+
+private val particulateVisualRangeFloorByLabel: Map<String, Double> = mapOf(
+    "DUST" to 50.0,
+    "PM10" to 50.0,
+    "PM2.5" to 25.0,
+    "TREES" to 50.0,
+    "GRASS" to 20.0,
+    "WEEDS" to 20.0
+)
+
+private fun applyParticulateVisualRangeFloor(
+    label: String,
+    rangeMax: Double?
+): Double? {
+    val minVisualMax = particulateVisualRangeFloorByLabel[label] ?: return rangeMax
+    return when {
+        rangeMax == null -> minVisualMax
+        !rangeMax.isFinite() -> minVisualMax
+        else -> maxOf(rangeMax, minVisualMax)
     }
 }
