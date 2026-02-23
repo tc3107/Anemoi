@@ -793,16 +793,16 @@ private fun TemperatureRangeTrack(
         val strokeWidth = max(2f, size.height * 0.65f)
         val baseGradient = Brush.horizontalGradient(
             colors = listOf(
-                Color(0xFF6EC9F7).copy(alpha = 0.28f),
-                Color(0xFF0288D1).copy(alpha = 0.28f)
+                Color(0xFF435A69).copy(alpha = 0.82f),
+                Color(0xFF5A7486).copy(alpha = 0.78f)
             ),
             startX = 0f,
             endX = size.width
         )
         val highlightGradient = Brush.horizontalGradient(
             colors = listOf(
-                Color(0xFF6EC9F7),
-                Color(0xFF0288D1)
+                Color(0xFF9AE4FF),
+                Color(0xFF2FA8F5)
             ),
             startX = 0f,
             endX = size.width

@@ -1,6 +1,7 @@
 package com.tudorc.anemoi.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -92,7 +93,12 @@ fun SegmentedSelector(
             .height(44.dp)
             .onGloballyPositioned { componentWidth = it.size.width.toFloat() }
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.1f))
+            .background(Color.White.copy(alpha = 0.16f))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.24f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .pointerInput(options.size, itemWidthPx) {
                 if (itemWidthPx <= 0) return@pointerInput
                 detectTapGestures { offset ->
@@ -173,7 +179,7 @@ fun SegmentedSelector(
                                     modifier = Modifier
                                         .width(1.dp)
                                         .height(16.dp)
-                                        .background(Color.White.copy(alpha = 0.15f))
+                                        .background(Color.White.copy(alpha = 0.24f))
                                 )
                             }
                         }
@@ -193,7 +199,12 @@ fun SegmentedSelector(
                     .width(with(density) { itemWidthPx.toDp() })
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(alpha = 0.2f))
+                    .background(Color.White.copy(alpha = 0.34f))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.52f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
             )
         }
 
