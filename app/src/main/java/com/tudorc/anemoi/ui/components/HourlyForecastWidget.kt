@@ -228,7 +228,7 @@ fun HourlyForecastWidget(
             Column(modifier = Modifier.fillMaxSize()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "HOURLY CONDITIONS",
+                    text = "HOURLY CONDITION CHANGES",
                     color = Color.White.copy(alpha = 0.4f),
                     fontSize = 10.sp,
                     lineHeight = 12.sp,
@@ -251,7 +251,7 @@ fun HourlyForecastWidget(
                 Column(modifier = Modifier.fillMaxSize()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "HOURLY CONDITIONS",
+                        text = "HOURLY CONDITION CHANGES",
                         color = Color.White.copy(alpha = 0.4f),
                         fontSize = 10.sp,
                         lineHeight = 12.sp,
