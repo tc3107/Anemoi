@@ -299,6 +299,8 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val maxDebugLogEntries = 300
     private val geocodingRateLimitMutex = Mutex()
     private var lastGeocodingRequestAtMs = 0L
+    private var airQualityMinAllowedDateIso: String? = null
+    private var airQualityMaxAllowedDateIso: String? = null
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
@@ -2088,7 +2090,99 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             add(Calendar.DAY_OF_YEAR, 7)
         }
         val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        return formatter.format(start.time) to formatter.format(end.time)
+        val startIso = formatter.format(start.time)
+        val endIso = formatter.format(end.time)
+        return clampAirQualityDateRangeToKnownLimits(
+            startDateIso = startIso,
+            endDateIso = endIso
+        )
+    }
+
+    private fun clampAirQualityDateRangeToKnownLimits(
+        startDateIso: String,
+        endDateIso: String
+    ): Pair<String, String> {
+        var clampedStart = startDateIso
+        var clampedEnd = endDateIso
+        airQualityMinAllowedDateIso?.let { knownMin ->
+            if (clampedStart < knownMin) {
+                clampedStart = knownMin
+            }
+        }
+        airQualityMaxAllowedDateIso?.let { knownMax ->
+            if (clampedEnd > knownMax) {
+                clampedEnd = knownMax
+            }
+        }
+        if (clampedStart > clampedEnd) {
+            clampedStart = clampedEnd
+        }
+        return clampedStart to clampedEnd
+    }
+
+    private suspend fun fetchAirQualityWithRangeFallback(
+        lat: Double,
+        lon: Double,
+        startDateIso: String,
+        endDateIso: String
+    ): AirQualityResponse {
+        val initialRange = clampAirQualityDateRangeToKnownLimits(startDateIso, endDateIso)
+        return try {
+            openMeteoAirQualityService.getAirQuality(
+                lat = lat,
+                lon = lon,
+                hourly = airQualityFields,
+                startDate = initialRange.first,
+                endDate = initialRange.second
+            )
+        } catch (error: HttpException) {
+            if (error.code() != 400) throw error
+
+            val errorBody = runCatching {
+                error.response()?.errorBody()?.string()
+            }.getOrNull().orEmpty()
+            val allowedRange = parseAllowedDateRangeFromAirQualityError(errorBody)
+                ?: throw error
+
+            val adjustedRange = clampAirQualityDateRangeToKnownLimits(
+                startDateIso = maxIsoDate(initialRange.first, allowedRange.first),
+                endDateIso = minIsoDate(initialRange.second, allowedRange.second)
+            )
+            if (adjustedRange == initialRange || adjustedRange.first > adjustedRange.second) {
+                throw error
+            }
+
+            airQualityMinAllowedDateIso = allowedRange.first
+            airQualityMaxAllowedDateIso = allowedRange.second
+            addLog(
+                "Air quality range adjusted to provider bounds: " +
+                    "${adjustedRange.first}..${adjustedRange.second}"
+            )
+
+            openMeteoAirQualityService.getAirQuality(
+                lat = lat,
+                lon = lon,
+                hourly = airQualityFields,
+                startDate = adjustedRange.first,
+                endDate = adjustedRange.second
+            )
+        }
+    }
+
+    private fun parseAllowedDateRangeFromAirQualityError(body: String): Pair<String, String>? {
+        val regex = Regex("from\\s+(\\d{4}-\\d{2}-\\d{2})\\s+to\\s+(\\d{4}-\\d{2}-\\d{2})")
+        val match = regex.find(body) ?: return null
+        val minDateIso = match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
+        val maxDateIso = match.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() } ?: return null
+        return minDateIso to maxDateIso
+    }
+
+    private fun minIsoDate(first: String, second: String): String {
+        return if (first <= second) first else second
+    }
+
+    private fun maxIsoDate(first: String, second: String): String {
+        return if (first >= second) first else second
     }
 
     private suspend fun fetchAndStoreWeather(
@@ -2154,13 +2248,27 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
                 val airQualityDeferred = if (shouldRequestAirQuality) {
                     async {
-                        openMeteoAirQualityService.getAirQuality(
-                            lat = obfuscated.latObf,
-                            lon = obfuscated.lonObf,
-                            hourly = airQualityFields,
-                            startDate = rangeStartIso,
-                            endDate = rangeEndIso
-                        )
+                        runCatching {
+                            fetchAirQualityWithRangeFallback(
+                                lat = obfuscated.latObf,
+                                lon = obfuscated.lonObf,
+                                startDateIso = rangeStartIso,
+                                endDateIso = rangeEndIso
+                            )
+                        }.onFailure { airQualityError ->
+                            val retryableReason = classifyRetryableFailure(airQualityError)
+                            if (retryableReason != null) {
+                                addLog(
+                                    "Air quality fetch failed: $retryableReason. " +
+                                        "Using weather-only response for this refresh."
+                                )
+                            } else {
+                                addLog(
+                                    "Air quality fetch failed: ${airQualityError.message}. " +
+                                        "Using weather-only response for this refresh."
+                                )
+                            }
+                        }.getOrNull()
                     }
                 } else {
                     null
