@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +63,7 @@ fun SearchBar(
     val isFocused by interactionSource.collectIsFocusedAsState()
     var expanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val haptic = LocalHapticFeedback.current
     var wasSearchFieldFocused by remember { mutableStateOf(false) }
     val isKeyboardVisible = WindowInsets.isImeVisible
@@ -208,19 +210,19 @@ fun SearchBar(
                     keyboardActions = KeyboardActions(
                         onSearch = {
                             suppressNextKeyboardDismissClear = true
-                            focusManager.clearFocus()
+                            keyboardController?.hide()
                         },
                         onDone = {
                             suppressNextKeyboardDismissClear = true
-                            focusManager.clearFocus()
+                            keyboardController?.hide()
                         },
                         onGo = {
                             suppressNextKeyboardDismissClear = true
-                            focusManager.clearFocus()
+                            keyboardController?.hide()
                         },
                         onSend = {
                             suppressNextKeyboardDismissClear = true
-                            focusManager.clearFocus()
+                            keyboardController?.hide()
                         }
                     ),
                     cursorBrush = SolidColor(Color.White),
