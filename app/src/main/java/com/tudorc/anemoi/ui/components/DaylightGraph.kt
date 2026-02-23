@@ -104,8 +104,9 @@ fun DaylightGraph(
     val sunY = -amplitude * cos(2 * PI.toFloat() * sunX)
 
     fun formatMinutes(minutes: Int): String {
-        val hrs = (minutes / 60) % 24
-        val mins = minutes % 60
+        val normalizedMinutes = ((minutes % 1440) + 1440) % 1440
+        val hrs = normalizedMinutes / 60
+        val mins = normalizedMinutes % 60
         return String.format(Locale.getDefault(), "%02d:%02d", hrs, mins)
     }
 

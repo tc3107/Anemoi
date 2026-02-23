@@ -241,8 +241,9 @@ fun TemperatureGraph(
                                 }
 
                                 val readingLabel = formatTempWithUnit(displayedTemp)
-                                val hr = (fraction * 24).toInt() % 24
-                                val min = ((fraction * 24 - hr) * 60).toInt()
+                                val normalizedMinutes = ((fraction.coerceIn(0f, 1f) * 1440f).toInt()) % 1440
+                                val hr = normalizedMinutes / 60
+                                val min = normalizedMinutes % 60
                                 val clockLabel = String.format(
                                     Locale.getDefault(),
                                     "%02d:%02d",

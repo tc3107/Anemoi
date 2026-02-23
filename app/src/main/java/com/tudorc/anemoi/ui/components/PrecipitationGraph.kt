@@ -222,11 +222,12 @@ fun PrecipitationGraph(
                                 }
                                 val interpolatedProb = getInterpolatedProb(fraction)
                                 val probLabel = "${interpolatedProb.roundToInt()}%"
+                                val normalizedMinutes = ((fraction.coerceIn(0f, 1f) * 1440f).toInt()) % 1440
                                 val timeLabel = String.format(
                                     Locale.getDefault(),
                                     "%02d:%02d",
-                                    (fraction * 24).toInt() % 24,
-                                    ((fraction * 24 - (fraction * 24).toInt()) * 60).toInt()
+                                    normalizedMinutes / 60,
+                                    normalizedMinutes % 60
                                 )
 
                                 val hudRightX = w - rightPaddingDp.toPx()
