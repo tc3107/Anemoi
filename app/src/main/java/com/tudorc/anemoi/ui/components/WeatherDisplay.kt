@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -137,20 +138,27 @@ fun WeatherDisplay(
         if (!staleHintText.isNullOrBlank()) {
             val overlayHeightPx = (containerHeightPx - highLowBottomPx).coerceAtLeast(0f)
             if (overlayHeightPx > 0f) {
+                val staleHintContainerHeight = maxOf(with(density) { overlayHeightPx.toDp() }, 18.dp)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(top = with(density) { highLowBottomPx.toDp() })
                         .fillMaxWidth()
-                        .height(with(density) { overlayHeightPx.toDp() }),
+                        .height(staleHintContainerHeight),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = staleHintText,
                         fontSize = 11.sp,
+                        lineHeight = 13.sp,
                         color = hintTextColor,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.clickable(enabled = staleDetailsLines.isNotEmpty()) {
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                            .clickable(enabled = staleDetailsLines.isNotEmpty()) {
                             showStaleDialog = true
                         }
                     )
@@ -159,10 +167,15 @@ fun WeatherDisplay(
                 Text(
                     text = staleHintText,
                     fontSize = 11.sp,
+                    lineHeight = 13.sp,
                     color = hintTextColor,
                     textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
                         .clickable(enabled = staleDetailsLines.isNotEmpty()) {
                             showStaleDialog = true
                         }
