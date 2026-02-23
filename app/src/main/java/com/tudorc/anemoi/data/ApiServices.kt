@@ -29,3 +29,15 @@ interface OpenMeteoService {
         @Query("timezone") timezone: String = "auto"
     ): WeatherResponse
 }
+
+interface OpenMeteoAirQualityService {
+    @GET("v1/air-quality")
+    suspend fun getAirQuality(
+        @Query("latitude") lat: Double,
+        @Query("longitude") lon: Double,
+        @Query("hourly") hourly: String,
+        @Query("start_date") startDate: String,
+        @Query("end_date") endDate: String,
+        @Query("timezone") timezone: String = "auto"
+    ): AirQualityResponse
+}

@@ -3,13 +3,15 @@ package com.tudorc.anemoi.viewmodel
 internal enum class WeatherDataset {
     CURRENT,
     HOURLY,
-    DAILY
+    DAILY,
+    AIR_QUALITY
 }
 
 internal data class WeatherFreshnessThresholds(
     val currentMs: Long,
     val hourlyMs: Long,
-    val dailyMs: Long
+    val dailyMs: Long,
+    val airQualityMs: Long
 )
 
 internal data class DatasetRefreshInput(
@@ -17,9 +19,11 @@ internal data class DatasetRefreshInput(
     val hasCurrent: Boolean,
     val hasHourly: Boolean,
     val hasDaily: Boolean,
+    val hasAirQuality: Boolean,
     val currentUpdatedAtMs: Long,
     val hourlyUpdatedAtMs: Long,
     val dailyUpdatedAtMs: Long,
+    val airQualityUpdatedAtMs: Long,
     val nowMs: Long,
     val thresholds: WeatherFreshnessThresholds
 )
@@ -66,6 +70,13 @@ internal object WeatherRequestPolicy {
             isPastThreshold(input.dailyUpdatedAtMs, input.thresholds.dailyMs, input.nowMs)
         if (dailyNeedsRefresh) {
             datasets += WeatherDataset.DAILY
+        }
+
+        val airQualityNeedsRefresh = input.force ||
+            !input.hasAirQuality ||
+            isPastThreshold(input.airQualityUpdatedAtMs, input.thresholds.airQualityMs, input.nowMs)
+        if (airQualityNeedsRefresh) {
+            datasets += WeatherDataset.AIR_QUALITY
         }
 
         return datasets
@@ -134,4 +145,3 @@ internal object WeatherRequestPolicy {
         return updatedAtMs <= 0L || nowMs - updatedAtMs > thresholdMs
     }
 }
-

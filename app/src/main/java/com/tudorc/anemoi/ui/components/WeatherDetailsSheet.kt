@@ -106,8 +106,9 @@ fun WeatherDetailsSheet(
         val currentUpdatedAt = key?.let { uiState.currentUpdateTimeMap[it] } ?: 0L
         val hourlyUpdatedAt = key?.let { uiState.hourlyUpdateTimeMap[it] } ?: 0L
         val dailyUpdatedAt = key?.let { uiState.dailyUpdateTimeMap[it] } ?: 0L
+        val airQualityUpdatedAt = key?.let { uiState.airQualityUpdateTimeMap[it] } ?: 0L
 
-        val weather = remember(rawWeather, currentUpdatedAt, hourlyUpdatedAt, dailyUpdatedAt) {
+        val weather = remember(rawWeather, currentUpdatedAt, hourlyUpdatedAt, dailyUpdatedAt, airQualityUpdatedAt) {
             PerformanceProfiler.measure(name = "WeatherDetailsSheet/DeriveUsableWeather", category = "ui-state") {
                 val now = System.currentTimeMillis()
                 val currentUsable = rawWeather?.currentWeather != null &&
@@ -119,11 +120,15 @@ fun WeatherDetailsSheet(
                 val dailyUsable = rawWeather?.daily != null &&
                     dailyUpdatedAt > 0L &&
                     now - dailyUpdatedAt <= staleServeWindowMs
+                val airQualityUsable = rawWeather?.airQuality?.hourly != null &&
+                    airQualityUpdatedAt > 0L &&
+                    now - airQualityUpdatedAt <= staleServeWindowMs
 
                 rawWeather?.copy(
                     currentWeather = if (currentUsable) rawWeather.currentWeather else null,
                     hourly = if (hourlyUsable) rawWeather.hourly else null,
-                    daily = if (dailyUsable) rawWeather.daily else null
+                    daily = if (dailyUsable) rawWeather.daily else null,
+                    airQuality = if (airQualityUsable) rawWeather.airQuality else null
                 )
             }
         }
@@ -247,6 +252,87 @@ fun WeatherDetailsSheet(
             } else {
                 null
             }
+        }
+
+        val airQualityHourly = weather?.airQuality?.hourly
+        val airQualityTimes = airQualityHourly?.time ?: emptyList()
+        val airQualityDayPrefix = remember(todayPrefix, airQualityTimes) {
+            resolveAirQualityDayPrefix(
+                preferredDayPrefix = todayPrefix,
+                hourlyTimes = airQualityTimes
+            )
+        }
+        val pollutionMetrics = remember(
+            airQualityDayPrefix,
+            currentHourPrefix,
+            airQualityTimes,
+            airQualityHourly
+        ) {
+            fun metric(label: String, values: List<Double?>?): ParticulateMetricBar {
+                val (todayMax, rangeMax) = dayAndRangeMax(
+                    dayPrefix = airQualityDayPrefix,
+                    hourlyTimes = airQualityTimes,
+                    values = values
+                )
+                return ParticulateMetricBar(
+                    label = label,
+                    currentValue = valueForCurrentHour(
+                        currentHourPrefix = currentHourPrefix,
+                        dayPrefix = airQualityDayPrefix,
+                        hourlyTimes = airQualityTimes,
+                        values = values
+                    ),
+                    todayMax = todayMax,
+                    rangeMax = rangeMax
+                )
+            }
+
+            listOf(
+                metric("DUST", airQualityHourly?.dust),
+                metric("PM10", airQualityHourly?.pm10),
+                metric("PM2.5", airQualityHourly?.pm25)
+            )
+        }
+        val pollenMetrics = remember(
+            airQualityDayPrefix,
+            currentHourPrefix,
+            airQualityTimes,
+            airQualityHourly
+        ) {
+            val treeSeries = mergedHourlyMax(
+                airQualityHourly?.alderPollen,
+                airQualityHourly?.birchPollen
+            )
+            val weedSeries = mergedHourlyMax(
+                airQualityHourly?.mugwortPollen,
+                airQualityHourly?.olivePollen,
+                airQualityHourly?.ragweedPollen
+            )
+
+            fun metric(label: String, values: List<Double?>): ParticulateMetricBar {
+                val (todayMax, rangeMax) = dayAndRangeMax(
+                    dayPrefix = airQualityDayPrefix,
+                    hourlyTimes = airQualityTimes,
+                    values = values
+                )
+                return ParticulateMetricBar(
+                    label = label,
+                    currentValue = valueForCurrentHour(
+                        currentHourPrefix = currentHourPrefix,
+                        dayPrefix = airQualityDayPrefix,
+                        hourlyTimes = airQualityTimes,
+                        values = values
+                    ),
+                    todayMax = todayMax,
+                    rangeMax = rangeMax
+                )
+            }
+
+            listOf(
+                metric("TREES", treeSeries),
+                metric("GRASS", airQualityHourly?.grassPollen.orEmpty()),
+                metric("WEEDS", weedSeries)
+            )
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -409,6 +495,19 @@ fun WeatherDetailsSheet(
                         }
                     }
                     DetailWidgetContainer(
+                        label = "PARTICULATES",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(squareSize),
+                        contentTopGap = 4.dp
+                    ) { _ ->
+                        ParticulatesWidget(
+                            pollutionMetrics = pollutionMetrics,
+                            pollenMetrics = pollenMetrics,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    DetailWidgetContainer(
                         label = "WIND",
                         modifier = Modifier
                             .fillMaxWidth()
@@ -519,5 +618,101 @@ fun DetailWidgetContainer(
             )
             Spacer(modifier = Modifier.height(outerGap))
         }
+    }
+}
+
+private fun resolveAirQualityDayPrefix(
+    preferredDayPrefix: String?,
+    hourlyTimes: List<String>
+): String? {
+    if (!preferredDayPrefix.isNullOrBlank()) {
+        return preferredDayPrefix
+    }
+    return hourlyTimes.firstOrNull()?.substringBefore("T")
+}
+
+private fun dayAndRangeMax(
+    dayPrefix: String?,
+    hourlyTimes: List<String>,
+    values: List<Double?>?
+): Pair<Double?, Double?> {
+    if (values.isNullOrEmpty() || hourlyTimes.isEmpty()) {
+        return null to null
+    }
+
+    val rangeMax = values
+        .filterNotNull()
+        .filter { it.isFinite() }
+        .maxOrNull()
+
+    val todayMax = if (dayPrefix.isNullOrBlank()) {
+        null
+    } else {
+        hourlyTimes
+            .mapIndexedNotNull { index, iso ->
+                if (iso.startsWith(dayPrefix) && index < values.size) {
+                    values[index]
+                } else {
+                    null
+                }
+            }
+            .filter { it.isFinite() }
+            .maxOrNull()
+    }
+
+    return todayMax to rangeMax
+}
+
+private fun valueForCurrentHour(
+    currentHourPrefix: String?,
+    dayPrefix: String?,
+    hourlyTimes: List<String>,
+    values: List<Double?>?
+): Double? {
+    if (values.isNullOrEmpty() || hourlyTimes.isEmpty()) return null
+
+    if (!currentHourPrefix.isNullOrBlank()) {
+        val currentIndex = hourlyTimes.indexOfFirst { iso -> iso.startsWith(currentHourPrefix) }
+        if (currentIndex >= 0 && currentIndex < values.size) {
+            val current = values[currentIndex]
+            if (current != null && current.isFinite()) {
+                return current
+            }
+        }
+    }
+
+    if (!dayPrefix.isNullOrBlank()) {
+        val latestToday = hourlyTimes
+            .mapIndexedNotNull { index, iso ->
+                if (iso.startsWith(dayPrefix) && index < values.size) {
+                    values[index]
+                } else {
+                    null
+                }
+            }
+            .filter { it.isFinite() }
+            .lastOrNull()
+        if (latestToday != null) {
+            return latestToday
+        }
+    }
+
+    return values
+        .filterNotNull()
+        .filter { it.isFinite() }
+        .lastOrNull()
+}
+
+private fun mergedHourlyMax(vararg series: List<Double?>?): List<Double?> {
+    val maxSize = series.maxOfOrNull { it?.size ?: 0 } ?: 0
+    if (maxSize == 0) return emptyList()
+
+    return List(maxSize) { index ->
+        series
+            .mapNotNull { values ->
+                values?.getOrNull(index)
+            }
+            .filter { it.isFinite() }
+            .maxOrNull()
     }
 }

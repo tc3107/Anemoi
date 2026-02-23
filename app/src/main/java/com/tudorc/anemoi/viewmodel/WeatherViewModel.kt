@@ -25,9 +25,11 @@ import com.tudorc.anemoi.data.GeocodingResponse
 import com.tudorc.anemoi.data.HourlyData
 import com.tudorc.anemoi.data.LocationItem
 import com.tudorc.anemoi.data.NominatimService
+import com.tudorc.anemoi.data.OpenMeteoAirQualityService
 import com.tudorc.anemoi.data.OpenMeteoService
 import com.tudorc.anemoi.data.PressureUnit
 import com.tudorc.anemoi.data.TempUnit
+import com.tudorc.anemoi.data.AirQualityResponse
 import com.tudorc.anemoi.data.WeatherResponse
 import com.tudorc.anemoi.data.WindUnit
 import com.tudorc.anemoi.util.ObfuscationMode
@@ -56,6 +58,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -72,6 +75,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Calendar
 import java.util.Locale
@@ -90,6 +94,7 @@ data class WeatherUiState(
     val currentUpdateTimeMap: Map<String, Long> = emptyMap(),
     val hourlyUpdateTimeMap: Map<String, Long> = emptyMap(),
     val dailyUpdateTimeMap: Map<String, Long> = emptyMap(),
+    val airQualityUpdateTimeMap: Map<String, Long> = emptyMap(),
     val cacheSignatureMap: Map<String, String> = emptyMap(),
     val activeRequestSignature: String = "",
     val isLoading: Boolean = false,
@@ -159,6 +164,7 @@ private data class PersistedWeatherEntry(
     val currentUpdatedAt: Long = 0L,
     val hourlyUpdatedAt: Long = 0L,
     val dailyUpdatedAt: Long = 0L,
+    val airQualityUpdatedAt: Long = 0L,
     val signature: String = ""
 )
 
@@ -207,6 +213,13 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
         .create(OpenMeteoService::class.java)
+
+    private val openMeteoAirQualityService = Retrofit.Builder()
+        .baseUrl("https://air-quality-api.open-meteo.com/")
+        .client(okHttpClient)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+        .create(OpenMeteoAirQualityService::class.java)
 
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(applicationContext)
@@ -266,6 +279,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     private val currentFreshnessMs = WeatherFreshnessConfig.CURRENT_THRESHOLD_MS
     private val hourlyFreshnessMs = WeatherFreshnessConfig.HOURLY_THRESHOLD_MS
     private val dailyFreshnessMs = WeatherFreshnessConfig.DAILY_THRESHOLD_MS
+    private val airQualityFreshnessMs = WeatherFreshnessConfig.AIR_QUALITY_THRESHOLD_MS
     private val staleServeWindowMs = WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS
     private val staleCheckIntervalMs = 15 * 1000L
     private val backgroundRefreshIntervalMs = 60 * 60 * 1000L
@@ -288,6 +302,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private val hourlyFields = "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
     private val dailyFields = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
+    private val airQualityFields = "dust,pm10,pm2_5,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen"
     private val staleDataError =
         "Weather cache is missing or older than ${WeatherFreshnessConfig.STALE_SERVE_WINDOW_MS / (60 * 60 * 1000L)} hours"
 
@@ -317,6 +332,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             "locale=$localeTag",
             "hourly=$hourlyFields",
             "daily=$dailyFields",
+            "air=$airQualityFields",
             "obf=${state.obfuscationMode}",
             "grid=$gridString"
         ).joinToString("|")
@@ -446,6 +462,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             val currentMap = mutableMapOf<String, Long>()
             val hourlyMap = mutableMapOf<String, Long>()
             val dailyMap = mutableMapOf<String, Long>()
+            val airQualityMap = mutableMapOf<String, Long>()
             val updateMap = mutableMapOf<String, Long>()
             val signatureMap = mutableMapOf<String, String>()
 
@@ -457,7 +474,14 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 currentMap[entry.key] = entry.currentUpdatedAt
                 hourlyMap[entry.key] = entry.hourlyUpdatedAt
                 dailyMap[entry.key] = entry.dailyUpdatedAt
-                updateMap[entry.key] = max(entry.currentUpdatedAt, max(entry.hourlyUpdatedAt, entry.dailyUpdatedAt))
+                airQualityMap[entry.key] = entry.airQualityUpdatedAt
+                updateMap[entry.key] = max(
+                    entry.currentUpdatedAt,
+                    max(
+                        entry.hourlyUpdatedAt,
+                        max(entry.dailyUpdatedAt, entry.airQualityUpdatedAt)
+                    )
+                )
                 signatureMap[entry.key] = signature
             }
 
@@ -467,6 +491,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     currentUpdateTimeMap = currentMap,
                     hourlyUpdateTimeMap = hourlyMap,
                     dailyUpdateTimeMap = dailyMap,
+                    airQualityUpdateTimeMap = airQualityMap,
                     updateTimeMap = updateMap,
                     cacheSignatureMap = signatureMap
                 )
@@ -651,8 +676,14 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             now = now,
             maxAgeMs = staleServeWindowMs
         )
+        val airQualityUsable = isDatasetUsable(
+            hasData = weather.airQuality?.hourly != null,
+            updatedAt = state.airQualityUpdateTimeMap[key] ?: 0L,
+            now = now,
+            maxAgeMs = staleServeWindowMs
+        )
 
-        return currentUsable || hourlyUsable || dailyUsable
+        return currentUsable || hourlyUsable || dailyUsable || airQualityUsable
     }
 
     private fun isDatasetUsable(hasData: Boolean, updatedAt: Long, now: Long, maxAgeMs: Long): Boolean {
@@ -686,6 +717,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 currentUpdateTimeMap = current.currentUpdateTimeMap - keysToRemove,
                 hourlyUpdateTimeMap = current.hourlyUpdateTimeMap - keysToRemove,
                 dailyUpdateTimeMap = current.dailyUpdateTimeMap - keysToRemove,
+                airQualityUpdateTimeMap = current.airQualityUpdateTimeMap - keysToRemove,
                 cacheSignatureMap = current.cacheSignatureMap - keysToRemove,
                 pageStatuses = current.pageStatuses - keysToRemove
             )
@@ -783,6 +815,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         val currentUpdateSnapshot = state.currentUpdateTimeMap
         val hourlyUpdateSnapshot = state.hourlyUpdateTimeMap
         val dailyUpdateSnapshot = state.dailyUpdateTimeMap
+        val airQualityUpdateSnapshot = state.airQualityUpdateTimeMap
         val signatureSnapshot = state.cacheSignatureMap
         val activeSignature = activeRequestSignature(state)
         val searchEntriesSnapshot = searchQueryCache.map { (query, entry) ->
@@ -811,6 +844,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     currentUpdatedAt = currentUpdateSnapshot[key] ?: 0L,
                     hourlyUpdatedAt = hourlyUpdateSnapshot[key] ?: 0L,
                     dailyUpdatedAt = dailyUpdateSnapshot[key] ?: 0L,
+                    airQualityUpdatedAt = airQualityUpdateSnapshot[key] ?: 0L,
                     signature = signatureSnapshot[key] ?: activeSignature
                 )
             }
@@ -1821,14 +1855,17 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             hasCurrent = weather?.currentWeather != null,
             hasHourly = weather?.hourly != null,
             hasDaily = weather?.daily != null,
+            hasAirQuality = weather?.airQuality?.hourly != null,
             currentUpdatedAtMs = if (isSignatureMatch) state.currentUpdateTimeMap[key] ?: 0L else 0L,
             hourlyUpdatedAtMs = if (isSignatureMatch) state.hourlyUpdateTimeMap[key] ?: 0L else 0L,
             dailyUpdatedAtMs = if (isSignatureMatch) state.dailyUpdateTimeMap[key] ?: 0L else 0L,
+            airQualityUpdatedAtMs = if (isSignatureMatch) state.airQualityUpdateTimeMap[key] ?: 0L else 0L,
             nowMs = now,
             thresholds = WeatherFreshnessThresholds(
                 currentMs = currentFreshnessMs,
                 hourlyMs = hourlyFreshnessMs,
-                dailyMs = dailyFreshnessMs
+                dailyMs = dailyFreshnessMs,
+                airQualityMs = airQualityFreshnessMs
             )
         )
 
@@ -2043,6 +2080,17 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         )
     }
 
+    private fun rollingAirQualityDateRangeIso(now: Calendar = Calendar.getInstance()): Pair<String, String> {
+        val start = (now.clone() as Calendar).apply {
+            add(Calendar.DAY_OF_YEAR, -7)
+        }
+        val end = (now.clone() as Calendar).apply {
+            add(Calendar.DAY_OF_YEAR, 7)
+        }
+        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        return formatter.format(start.time) to formatter.format(end.time)
+    }
+
     private suspend fun fetchAndStoreWeather(
         location: LocationItem,
         datasets: Set<WeatherDataset>,
@@ -2074,41 +2122,89 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         }
 
         addLog(
-            "Requesting weather: lat=${obfuscated.latObf}, lon=${obfuscated.lonObf} " +
-                "(orig ${location.lat}, ${location.lon}; mode=${requestState.obfuscationMode})"
+            "Requesting weather data: lat=${obfuscated.latObf}, lon=${obfuscated.lonObf} " +
+                "(orig ${location.lat}, ${location.lon}; mode=${requestState.obfuscationMode}; " +
+                "datasets=${datasets.map { it.name.lowercase(Locale.US) }.sorted().joinToString(",")})"
         )
 
         val requestTime = System.currentTimeMillis()
         recordRequest(key, requestTime)
 
         return try {
-            val weather = openMeteoService.getWeather(
-                lat = obfuscated.latObf,
-                lon = obfuscated.lonObf,
-                currentWeather = if (WeatherDataset.CURRENT in datasets) true else null,
-                hourly = if (WeatherDataset.HOURLY in datasets) hourlyFields else null,
-                daily = if (WeatherDataset.DAILY in datasets) dailyFields else null
-            )
+            val shouldRequestWeather = WeatherDataset.CURRENT in datasets ||
+                WeatherDataset.HOURLY in datasets ||
+                WeatherDataset.DAILY in datasets
+            val shouldRequestAirQuality = WeatherDataset.AIR_QUALITY in datasets
+            val (rangeStartIso, rangeEndIso) = rollingAirQualityDateRangeIso()
+
+            val (weather, airQuality) = coroutineScope {
+                val weatherDeferred = if (shouldRequestWeather) {
+                    async {
+                        openMeteoService.getWeather(
+                            lat = obfuscated.latObf,
+                            lon = obfuscated.lonObf,
+                            currentWeather = if (WeatherDataset.CURRENT in datasets) true else null,
+                            hourly = if (WeatherDataset.HOURLY in datasets) hourlyFields else null,
+                            daily = if (WeatherDataset.DAILY in datasets) dailyFields else null
+                        )
+                    }
+                } else {
+                    null
+                }
+
+                val airQualityDeferred = if (shouldRequestAirQuality) {
+                    async {
+                        openMeteoAirQualityService.getAirQuality(
+                            lat = obfuscated.latObf,
+                            lon = obfuscated.lonObf,
+                            hourly = airQualityFields,
+                            startDate = rangeStartIso,
+                            endDate = rangeEndIso
+                        )
+                    }
+                } else {
+                    null
+                }
+
+                weatherDeferred?.await() to airQualityDeferred?.await()
+            }
 
             val stateBeforeUpdate = _uiState.value
             val signature = activeRequestSignature(stateBeforeUpdate)
             val existing = weatherForActiveSignature(key, stateBeforeUpdate)
-            val merged = mergeWeather(existing, weather, datasets)
+            val merged = mergeWeather(
+                existing = existing,
+                incomingWeather = weather,
+                incomingAirQuality = airQuality,
+                datasets = datasets,
+                fallbackLat = obfuscated.latObf,
+                fallbackLon = obfuscated.lonObf
+            )
 
             val now = System.currentTimeMillis()
             val newCurrentUpdatedAt = if (
-                WeatherDataset.CURRENT in datasets && weather.currentWeather != null
+                WeatherDataset.CURRENT in datasets && weather?.currentWeather != null
             ) now else stateBeforeUpdate.currentUpdateTimeMap[key] ?: 0L
 
             val newHourlyUpdatedAt = if (
-                WeatherDataset.HOURLY in datasets && weather.hourly != null
+                WeatherDataset.HOURLY in datasets && weather?.hourly != null
             ) now else stateBeforeUpdate.hourlyUpdateTimeMap[key] ?: 0L
 
             val newDailyUpdatedAt = if (
-                WeatherDataset.DAILY in datasets && weather.daily != null
+                WeatherDataset.DAILY in datasets && weather?.daily != null
             ) now else stateBeforeUpdate.dailyUpdateTimeMap[key] ?: 0L
 
-            val combinedUpdatedAt = max(newCurrentUpdatedAt, max(newHourlyUpdatedAt, newDailyUpdatedAt))
+            val newAirQualityUpdatedAt = if (
+                WeatherDataset.AIR_QUALITY in datasets && airQuality?.hourly != null
+            ) now else stateBeforeUpdate.airQualityUpdateTimeMap[key] ?: 0L
+
+            val combinedUpdatedAt = max(
+                newCurrentUpdatedAt,
+                max(
+                    newHourlyUpdatedAt,
+                    max(newDailyUpdatedAt, newAirQualityUpdatedAt)
+                )
+            )
 
             _uiState.update { state ->
                 state.copy(
@@ -2116,6 +2212,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                     currentUpdateTimeMap = state.currentUpdateTimeMap + (key to newCurrentUpdatedAt),
                     hourlyUpdateTimeMap = state.hourlyUpdateTimeMap + (key to newHourlyUpdatedAt),
                     dailyUpdateTimeMap = state.dailyUpdateTimeMap + (key to newDailyUpdatedAt),
+                    airQualityUpdateTimeMap = state.airQualityUpdateTimeMap + (key to newAirQualityUpdatedAt),
                     cacheSignatureMap = state.cacheSignatureMap + (key to signature),
                     updateTimeMap = state.updateTimeMap + (key to combinedUpdatedAt),
                     isLoading = if (showLoading) false else state.isLoading,
@@ -2127,17 +2224,20 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             }
 
             val missingDatasets = mutableListOf<String>()
-            if (WeatherDataset.CURRENT in datasets && weather.currentWeather == null) {
+            if (WeatherDataset.CURRENT in datasets && weather?.currentWeather == null) {
                 missingDatasets += "current"
             }
-            if (WeatherDataset.HOURLY in datasets && weather.hourly == null) {
+            if (WeatherDataset.HOURLY in datasets && weather?.hourly == null) {
                 missingDatasets += "hourly"
             }
-            if (WeatherDataset.DAILY in datasets && weather.daily == null) {
+            if (WeatherDataset.DAILY in datasets && weather?.daily == null) {
                 missingDatasets += "daily"
             }
+            if (WeatherDataset.AIR_QUALITY in datasets && airQuality?.hourly == null) {
+                missingDatasets += "air_quality"
+            }
             if (missingDatasets.isNotEmpty()) {
-                addLog("Weather response missing requested data: ${missingDatasets.joinToString()}")
+                addLog("Response missing requested data: ${missingDatasets.joinToString()}")
             }
 
             locationBackoff.remove(key)
@@ -2180,30 +2280,41 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private fun mergeWeather(
         existing: WeatherResponse?,
-        incoming: WeatherResponse,
-        datasets: Set<WeatherDataset>
+        incomingWeather: WeatherResponse?,
+        incomingAirQuality: AirQualityResponse?,
+        datasets: Set<WeatherDataset>,
+        fallbackLat: Double,
+        fallbackLon: Double
     ): WeatherResponse {
         val existingCurrent: CurrentWeather? = existing?.currentWeather
         val existingHourly: HourlyData? = existing?.hourly
         val existingDaily: DailyData? = existing?.daily
+        val existingAirQuality: AirQualityResponse? = existing?.airQuality
+        val latitude = incomingWeather?.latitude ?: incomingAirQuality?.latitude ?: existing?.latitude ?: fallbackLat
+        val longitude = incomingWeather?.longitude ?: incomingAirQuality?.longitude ?: existing?.longitude ?: fallbackLon
 
         return WeatherResponse(
-            latitude = incoming.latitude,
-            longitude = incoming.longitude,
+            latitude = latitude,
+            longitude = longitude,
             currentWeather = if (WeatherDataset.CURRENT in datasets) {
-                incoming.currentWeather ?: existingCurrent
+                incomingWeather?.currentWeather ?: existingCurrent
             } else {
                 existingCurrent
             },
             hourly = if (WeatherDataset.HOURLY in datasets) {
-                incoming.hourly ?: existingHourly
+                incomingWeather?.hourly ?: existingHourly
             } else {
                 existingHourly
             },
             daily = if (WeatherDataset.DAILY in datasets) {
-                incoming.daily ?: existingDaily
+                incomingWeather?.daily ?: existingDaily
             } else {
                 existingDaily
+            },
+            airQuality = if (WeatherDataset.AIR_QUALITY in datasets) {
+                incomingAirQuality ?: existingAirQuality
+            } else {
+                existingAirQuality
             }
         )
     }

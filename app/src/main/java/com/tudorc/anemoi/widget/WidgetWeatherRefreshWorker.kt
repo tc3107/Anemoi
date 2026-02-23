@@ -255,6 +255,7 @@ class WidgetWeatherRefreshWorker(
             "locale=$localeTag",
             "hourly=$HOURLY_FIELDS",
             "daily=$DAILY_FIELDS",
+            "air=$AIR_QUALITY_FIELDS",
             "obf=$obfuscationMode",
             "grid=$gridString"
         ).joinToString("|")
@@ -284,6 +285,8 @@ class WidgetWeatherRefreshWorker(
             "temperature_2m,weathercode,apparent_temperature,surface_pressure,precipitation_probability,precipitation,uv_index"
         private const val DAILY_FIELDS =
             "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset,daylight_duration,uv_index_max"
+        private const val AIR_QUALITY_FIELDS =
+            "dust,pm10,pm2_5,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen"
     }
 }
 

@@ -26,7 +26,29 @@ data class WeatherResponse(
     val longitude: Double,
     @SerialName("current_weather") val currentWeather: CurrentWeather? = null,
     val hourly: HourlyData? = null,
-    val daily: DailyData? = null
+    val daily: DailyData? = null,
+    val airQuality: AirQualityResponse? = null
+)
+
+@Serializable
+data class AirQualityResponse(
+    val latitude: Double,
+    val longitude: Double,
+    val hourly: AirQualityHourlyData? = null
+)
+
+@Serializable
+data class AirQualityHourlyData(
+    val time: List<String> = emptyList(),
+    val dust: List<Double?>? = null,
+    val pm10: List<Double?>? = null,
+    @SerialName("pm2_5") val pm25: List<Double?>? = null,
+    @SerialName("alder_pollen") val alderPollen: List<Double?>? = null,
+    @SerialName("birch_pollen") val birchPollen: List<Double?>? = null,
+    @SerialName("grass_pollen") val grassPollen: List<Double?>? = null,
+    @SerialName("mugwort_pollen") val mugwortPollen: List<Double?>? = null,
+    @SerialName("olive_pollen") val olivePollen: List<Double?>? = null,
+    @SerialName("ragweed_pollen") val ragweedPollen: List<Double?>? = null
 )
 
 @Serializable

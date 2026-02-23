@@ -9,7 +9,8 @@ class WeatherRequestPolicyTest {
     private val thresholds = WeatherFreshnessThresholds(
         currentMs = 5 * 60 * 1000L,
         hourlyMs = 20 * 60 * 1000L,
-        dailyMs = 2 * 60 * 60 * 1000L
+        dailyMs = 2 * 60 * 60 * 1000L,
+        airQualityMs = 60 * 60 * 1000L
     )
 
     private val gateConfig = RequestGateConfig(
@@ -27,9 +28,11 @@ class WeatherRequestPolicyTest {
                 hasCurrent = false,
                 hasHourly = true,
                 hasDaily = true,
+                hasAirQuality = true,
                 currentUpdatedAtMs = now,
                 hourlyUpdatedAtMs = now,
                 dailyUpdatedAtMs = now,
+                airQualityUpdatedAtMs = now,
                 nowMs = now,
                 thresholds = thresholds
             )
@@ -47,9 +50,11 @@ class WeatherRequestPolicyTest {
                 hasCurrent = true,
                 hasHourly = true,
                 hasDaily = true,
+                hasAirQuality = true,
                 currentUpdatedAtMs = now - thresholds.currentMs + 1,
                 hourlyUpdatedAtMs = now - thresholds.hourlyMs + 1,
                 dailyUpdatedAtMs = now - thresholds.dailyMs + 1,
+                airQualityUpdatedAtMs = now - thresholds.airQualityMs + 1,
                 nowMs = now,
                 thresholds = thresholds
             )
@@ -67,9 +72,11 @@ class WeatherRequestPolicyTest {
                 hasCurrent = true,
                 hasHourly = true,
                 hasDaily = true,
+                hasAirQuality = true,
                 currentUpdatedAtMs = now - thresholds.currentMs - 1,
                 hourlyUpdatedAtMs = now - thresholds.hourlyMs + 1,
                 dailyUpdatedAtMs = now - thresholds.dailyMs + 1,
+                airQualityUpdatedAtMs = now - thresholds.airQualityMs + 1,
                 nowMs = now,
                 thresholds = thresholds
             )
@@ -87,15 +94,39 @@ class WeatherRequestPolicyTest {
                 hasCurrent = false,
                 hasHourly = true,
                 hasDaily = true,
+                hasAirQuality = true,
                 currentUpdatedAtMs = 0L,
                 hourlyUpdatedAtMs = now - thresholds.hourlyMs + 10,
                 dailyUpdatedAtMs = now - thresholds.dailyMs - 10,
+                airQualityUpdatedAtMs = now - thresholds.airQualityMs + 10,
                 nowMs = now,
                 thresholds = thresholds
             )
         )
 
         assertEquals(setOf(WeatherDataset.CURRENT, WeatherDataset.DAILY), result)
+    }
+
+    @Test
+    fun resolveDatasets_staleAirQuality_isIncluded() {
+        val now = 9_000_000L
+        val result = WeatherRequestPolicy.resolveDatasetsToRefresh(
+            DatasetRefreshInput(
+                force = false,
+                hasCurrent = true,
+                hasHourly = true,
+                hasDaily = true,
+                hasAirQuality = true,
+                currentUpdatedAtMs = now - thresholds.currentMs + 1,
+                hourlyUpdatedAtMs = now - thresholds.hourlyMs + 1,
+                dailyUpdatedAtMs = now - thresholds.dailyMs + 1,
+                airQualityUpdatedAtMs = now - thresholds.airQualityMs - 1,
+                nowMs = now,
+                thresholds = thresholds
+            )
+        )
+
+        assertEquals(setOf(WeatherDataset.AIR_QUALITY), result)
     }
 
     @Test
