@@ -130,9 +130,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             appWidgetIds.forEach { appWidgetId ->
                 val snapshot = snapshotReader.read(appWidgetId)
                 val widthTier = resolveWidthTier(appWidgetManager, appWidgetId)
+                val heightTier = resolveHeightTier(appWidgetManager, appWidgetId)
                 appWidgetManager.updateAppWidget(
                     appWidgetId,
-                    buildRemoteViews(context, snapshot, widthTier, appWidgetId)
+                    buildRemoteViews(context, snapshot, widthTier, heightTier, appWidgetId)
                 )
             }
         }
@@ -156,10 +157,25 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             }
         }
 
+        private fun resolveHeightTier(
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int
+        ): WidgetHeightTier {
+            val options = runCatching {
+                appWidgetManager.getAppWidgetOptions(appWidgetId)
+            }.getOrDefault(Bundle())
+
+            val minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 72)
+            val rows = ((minHeightDp + 30) / 70).coerceAtLeast(1)
+
+            return if (rows >= 2) WidgetHeightTier.TWO_PLUS_ROWS else WidgetHeightTier.ONE_ROW
+        }
+
         private fun buildRemoteViews(
             context: Context,
             snapshot: WeatherWidgetSnapshot,
             widthTier: WidgetWidthTier,
+            heightTier: WidgetHeightTier,
             appWidgetId: Int
         ): RemoteViews {
             val launchIntent = Intent(context, MainActivity::class.java).apply {
@@ -186,7 +202,20 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             )
 
             return RemoteViews(context.packageName, R.layout.widget_weather).apply {
-                setTextViewText(R.id.widget_location, snapshot.locationName)
+                val topRowTopPaddingPx = if (heightTier == WidgetHeightTier.TWO_PLUS_ROWS) {
+                    dpToPx(context, 2f)
+                } else {
+                    0
+                }
+                val showDateTimeRow = heightTier == WidgetHeightTier.TWO_PLUS_ROWS &&
+                    widthTier != WidgetWidthTier.TWO_BY_ONE
+                setViewVisibility(
+                    R.id.widget_datetime_row,
+                    if (showDateTimeRow) View.VISIBLE else View.GONE
+                )
+                setViewVisibility(R.id.widget_clock, if (showDateTimeRow) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.widget_date, if (showDateTimeRow) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.widget_location, View.GONE)
                 setTextViewText(
                     R.id.widget_updated_time,
                     when (widthTier) {
@@ -233,7 +262,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 when (widthTier) {
                     WidgetWidthTier.TWO_BY_ONE -> {
                         // Keep 2x1 visually identical to the current 3x1 layout.
-                        setViewPadding(R.id.widget_top_row, 0, 0, 0, 0)
+                        setViewPadding(R.id.widget_top_row, 0, topRowTopPaddingPx, 0, 0)
                         setViewVisibility(R.id.widget_row_two, View.GONE)
                         setViewVisibility(R.id.widget_row_rich, View.VISIBLE)
                         setViewVisibility(R.id.widget_hl_column, View.VISIBLE)
@@ -245,7 +274,13 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     }
 
                     WidgetWidthTier.THREE_BY_ONE -> {
-                        setViewPadding(R.id.widget_top_row, 0, 0, dpToPx(context, 35f), 0)
+                        setViewPadding(
+                            R.id.widget_top_row,
+                            0,
+                            topRowTopPaddingPx,
+                            dpToPx(context, 35f),
+                            0
+                        )
                         setViewVisibility(R.id.widget_row_two, View.GONE)
                         setViewVisibility(R.id.widget_row_rich, View.VISIBLE)
                         setViewVisibility(R.id.widget_hl_column, View.VISIBLE)
@@ -257,7 +292,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     }
 
                     WidgetWidthTier.FOUR_BY_ONE -> {
-                        setViewPadding(R.id.widget_top_row, 0, 0, 0, 0)
+                        setViewPadding(R.id.widget_top_row, 0, topRowTopPaddingPx, 0, 0)
                         setViewVisibility(R.id.widget_row_two, View.GONE)
                         setViewVisibility(R.id.widget_row_rich, View.VISIBLE)
                         setViewVisibility(R.id.widget_hl_column, View.VISIBLE)
@@ -269,7 +304,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     }
 
                     WidgetWidthTier.FIVE_PLUS_BY_ONE -> {
-                        setViewPadding(R.id.widget_top_row, 0, 0, 0, 0)
+                        setViewPadding(R.id.widget_top_row, 0, topRowTopPaddingPx, 0, 0)
                         setViewVisibility(R.id.widget_row_two, View.GONE)
                         setViewVisibility(R.id.widget_row_rich, View.VISIBLE)
                         setViewVisibility(R.id.widget_hl_column, View.VISIBLE)
@@ -324,6 +359,11 @@ private enum class WidgetWidthTier {
     FIVE_PLUS_BY_ONE
 }
 
+private enum class WidgetHeightTier {
+    ONE_ROW,
+    TWO_PLUS_ROWS
+}
+
 private data class WidgetHourlySlot(
     val timeLabel: String,
     val tempText: String,
@@ -375,7 +415,7 @@ private class WeatherWidgetSnapshotReader(private val context: Context) {
             ?.displayName
             ?.takeIf { it.isNotBlank() }
             ?: when (selection) {
-                WidgetLocationSelection.CurrentLocation -> context.getString(R.string.widget_current_location_option)
+                WidgetLocationSelection.CurrentLocation -> ""
                 else -> context.getString(R.string.widget_location_placeholder)
             }
 

@@ -11,10 +11,58 @@
     android:paddingTop="6dp">
 
     <RelativeLayout
+        android:id="@+id/widget_datetime_row"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_alignParentTop="true"
+        android:layout_marginTop="4dp"
+        android:visibility="gone">
+
+        <TextClock
+            android:id="@+id/widget_clock"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_alignParentStart="true"
+            android:layout_toStartOf="@id/widget_date"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="32sp"
+            android:autoSizeMaxTextSize="92sp"
+            android:autoSizeStepGranularity="2sp"
+            android:fontFamily="sans-serif-rounded"
+            android:format12Hour="h:mm"
+            android:format24Hour="HH:mm"
+            android:gravity="start|top"
+            android:paddingEnd="8dp"
+            android:shadowColor="#66000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2"
+            android:textColor="@android:color/white"
+            android:textSize="92sp"
+            android:textStyle="bold" />
+
+        <TextClock
+            android:id="@+id/widget_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_alignTop="@id/widget_clock"
+            android:format12Hour="EEE, MMM d"
+            android:format24Hour="EEE, MMM d"
+            android:shadowColor="#44000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2"
+            android:textColor="#D6D9DE"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+    <RelativeLayout
         android:id="@+id/widget_top_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentTop="true">
+        android:layout_below="@id/widget_datetime_row">
 
         <TextView
             android:id="@+id/widget_updated_time"
@@ -238,14 +286,15 @@
                         android:gravity="end"
                         android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="12sp" />
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
                     <ImageView
                         android:id="@+id/widget_hour_1_icon"
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="@null"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="6dp"
                         android:translationX="10dp"
                         android:scaleType="centerInside" />
 
@@ -254,10 +303,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:layout_marginStart="28dp"
+                        android:layout_marginStart="24dp"
                         android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="13sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -276,14 +325,15 @@
                         android:gravity="end"
                         android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="12sp" />
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
                     <ImageView
                         android:id="@+id/widget_hour_2_icon"
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="@null"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="6dp"
                         android:translationX="10dp"
                         android:scaleType="centerInside" />
 
@@ -292,10 +342,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:layout_marginStart="28dp"
+                        android:layout_marginStart="24dp"
                         android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="13sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -314,14 +364,15 @@
                         android:gravity="end"
                         android:text="@string/widget_hour_time_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="12sp" />
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
                     <ImageView
                         android:id="@+id/widget_hour_3_icon"
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="@null"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="6dp"
                         android:translationX="10dp"
                         android:scaleType="centerInside" />
 
@@ -330,10 +381,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="end"
-                        android:layout_marginStart="28dp"
+                        android:layout_marginStart="24dp"
                         android:text="@string/widget_temp_placeholder"
                         android:textColor="@android:color/white"
-                        android:textSize="13sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
