@@ -19,13 +19,14 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -361,6 +362,18 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 .fillMaxWidth()
                                 .padding(top = statusBarInsetTop + 2.dp)
                         ) {
+                            TopPageDotStrip(
+                                favorites = favorites,
+                                searchedLocation = searchedLocation,
+                                pageStatuses = uiState.pageStatuses,
+                                currentPage = pagerState.currentPage,
+                                totalPages = totalPages,
+                                locationFound = uiState.locationFound,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                            )
+
                             SearchBar(
                                 query = uiState.searchQuery,
                                 onQueryChange = viewModel::onSearchQueryChanged,
@@ -546,17 +559,6 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                         .fillMaxWidth()
                         .zIndex(3f)
                 ) {
-                    TopPageStatusStrip(
-                        favorites = favorites,
-                        searchedLocation = searchedLocation,
-                        pageStatuses = uiState.pageStatuses,
-                        currentPage = pagerState.currentPage,
-                        totalPages = totalPages,
-                        locationFound = uiState.locationFound,
-                        tintAlpha = currentTintAlpha,
-                        blurStrength = currentBlurStrength,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                     Column(modifier = Modifier.statusBarsPadding()) {
                         if (uiState.isLoading) {
                             LinearProgressIndicator(
@@ -646,27 +648,39 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     }
 }
 
+private enum class PageIndicatorKind {
+    CurrentLocation,
+    Favorite,
+    Searched
+}
+
+private data class PageIndicatorEntry(
+    val kind: PageIndicatorKind,
+    val color: Color
+)
+
 @Composable
-private fun TopPageStatusStrip(
+private fun TopPageDotStrip(
     favorites: List<LocationItem>,
     searchedLocation: LocationItem?,
     pageStatuses: Map<String, Boolean?>,
     currentPage: Int,
     totalPages: Int,
     locationFound: Boolean,
-    tintAlpha: Float,
-    blurStrength: Float,
     modifier: Modifier = Modifier
 ) {
-    val segmentOpacity = 0.65f
-    val sectionColors = buildList {
+    val indicators = buildList {
         val isLocationActive = currentPage == 0
         add(
-            if (isLocationActive) {
-                if (locationFound) Color(0xFF4285F4) else Color.White
-            } else {
-                Color.White.copy(alpha = 0.5f)
-            }
+            PageIndicatorEntry(
+                kind = PageIndicatorKind.CurrentLocation,
+                color =
+                    if (isLocationActive) {
+                        if (locationFound) Color(0xFF4285F4) else Color.White
+                    } else {
+                        Color.White.copy(alpha = 0.5f)
+                    }
+            )
         )
 
         favorites.forEachIndexed { index, location ->
@@ -674,11 +688,14 @@ private fun TopPageStatusStrip(
             val key = "${location.lat},${location.lon}"
             val status = pageStatuses[key]
             add(
-                when {
-                    isActive && status == true -> Color.Green.copy(alpha = 0.5f)
-                    isActive -> Color.White
-                    else -> Color.White.copy(alpha = 0.5f)
-                }
+                PageIndicatorEntry(
+                    kind = PageIndicatorKind.Favorite,
+                    color = when {
+                        isActive && status == true -> Color.Green.copy(alpha = 0.5f)
+                        isActive -> Color.White
+                        else -> Color.White.copy(alpha = 0.5f)
+                    }
+                )
             )
         }
 
@@ -687,64 +704,50 @@ private fun TopPageStatusStrip(
             val key = "${searchedLocation.lat},${searchedLocation.lon}"
             val status = pageStatuses[key]
             add(
-                when {
-                    isActive && status == true -> Color.Green.copy(alpha = 0.5f)
-                    isActive -> Color.White
-                    else -> Color.White.copy(alpha = 0.32f)
-                }
+                PageIndicatorEntry(
+                    kind = PageIndicatorKind.Searched,
+                    color = when {
+                        isActive && status == true -> Color.Green.copy(alpha = 0.5f)
+                        isActive -> Color.White
+                        else -> Color.White.copy(alpha = 0.32f)
+                    }
+                )
             )
         }
     }
 
-    val stripShape = RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp)
-    Box(
-        modifier = modifier
-            .height(10.dp)
-            .clip(stripShape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.14f),
-                        Color.White.copy(alpha = 0.07f),
-                        Color.White.copy(alpha = 0.03f)
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.2f),
-                        Color.White.copy(alpha = 0.05f)
-                    )
-                ),
-                shape = stripShape
-            )
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .blur((blurStrength * 0.55f).coerceAtLeast(0f).dp)
-                .background(Color.White.copy(alpha = tintAlpha.coerceIn(0f, 1f) * 0.55f))
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 2.dp, vertical = 1.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            sectionColors.forEach { sectionColor ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(1.5.dp))
-                        .background(
-                            sectionColor.copy(
-                                alpha = (sectionColor.alpha * segmentOpacity).coerceIn(0f, 1f)
-                            )
-                        )
-                )
+        indicators.forEach { entry ->
+            val indicatorColor = entry.color.copy(alpha = 1f)
+            when (entry.kind) {
+                PageIndicatorKind.CurrentLocation -> {
+                    Icon(
+                        imageVector = Icons.Filled.MyLocation,
+                        contentDescription = "Current location indicator",
+                        tint = indicatorColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+                PageIndicatorKind.Searched -> {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search indicator",
+                        tint = indicatorColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+                PageIndicatorKind.Favorite -> {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .clip(RoundedCornerShape(percent = 50))
+                            .background(indicatorColor)
+                    )
+                }
             }
         }
     }
