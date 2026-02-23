@@ -825,14 +825,7 @@ private fun TemperatureRangeTrack(
     Canvas(modifier = modifier.fillMaxWidth()) {
         val centerY = size.height / 2f
         val strokeWidth = max(2f, size.height * 0.65f)
-        val baseGradient = Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFF435A69).copy(alpha = 0.82f),
-                Color(0xFF5A7486).copy(alpha = 0.78f)
-            ),
-            startX = 0f,
-            endX = size.width
-        )
+        val baseTrackColor = Color(0xFF4F6777).copy(alpha = 0.8f)
         val highlightGradient = Brush.horizontalGradient(
             colors = listOf(
                 Color(0xFF9AE4FF),
@@ -843,7 +836,7 @@ private fun TemperatureRangeTrack(
         )
 
         drawLine(
-            brush = baseGradient,
+            color = baseTrackColor,
             start = Offset(0f, centerY),
             end = Offset(size.width, centerY),
             strokeWidth = strokeWidth,

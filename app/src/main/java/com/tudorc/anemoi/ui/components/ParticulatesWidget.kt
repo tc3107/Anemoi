@@ -192,7 +192,7 @@ private fun LeftMetricRow(
             outwardToStart = true,
             modifier = Modifier
                 .weight(1f)
-                .height(8.dp)
+                .height(10.dp)
         )
         Spacer(modifier = Modifier.width(textToBarGap))
         Text(
@@ -236,7 +236,7 @@ private fun RightMetricRow(
             outwardToStart = false,
             modifier = Modifier
                 .weight(1f)
-                .height(8.dp)
+                .height(10.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
