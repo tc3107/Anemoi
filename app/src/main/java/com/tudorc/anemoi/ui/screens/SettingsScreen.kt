@@ -1,5 +1,9 @@
 package com.tudorc.anemoi.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -25,6 +29,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.tudorc.anemoi.data.PressureUnit
 import com.tudorc.anemoi.data.TempUnit
 import com.tudorc.anemoi.data.WindUnit
@@ -39,6 +44,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val haptic = LocalHapticFeedback.current
     var draftObfuscationMode by remember(uiState.isSettingsOpen) { mutableStateOf(uiState.obfuscationMode) }
@@ -59,6 +65,41 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
         uncheckedTrackColor = Color.Transparent,
         uncheckedBorderColor = Color(0xFF8C8C8C)
     )
+    fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+    var hasLocationAccess by remember(uiState.isSettingsOpen) {
+        mutableStateOf(hasLocationPermission())
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasLocationAccess = permissions.entries.any { it.value }
+        if (hasLocationAccess) {
+            viewModel.getCurrentLocation(context)
+        }
+    }
+    fun requestLocationPermission() {
+        if (hasLocationPermission()) {
+            hasLocationAccess = true
+            viewModel.getCurrentLocation(context)
+            return
+        }
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
+    LaunchedEffect(uiState.isSettingsOpen) {
+        hasLocationAccess = hasLocationPermission()
+    }
+
     val closeSettingsAndApplyPrivacyChanges: () -> Unit = {
         val modeChanged = draftObfuscationMode != uiState.obfuscationMode
         val gridChanged = draftGridKm != uiState.gridKm
@@ -199,6 +240,20 @@ fun SettingsScreen(viewModel: WeatherViewModel, onBack: () -> Unit) {
                                 )
                             }
                         }
+                    }
+
+                    if (!hasLocationAccess) {
+                        Text(
+                            text = "Location access is off. Tap to allow for current-location weather.",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    requestLocationPermission()
+                                }
+                        )
                     }
                     
                     Text(

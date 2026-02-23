@@ -296,6 +296,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         lat = 40.7128,
         lon = -74.0060
     )
+    private val defaultLocationKeyValue = locationKey(defaultLocation)
 
     init {
         _uiState.update { state ->
@@ -423,6 +424,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             _uiState.update { it.copy(selectedLocation = defaultLocation) }
             saveLastLocation(defaultLocation)
         }
+        enforceNewYorkFallbackEntryPolicy()
 
         val startupLocations = buildList {
             addAll(favs)
@@ -1079,6 +1081,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
             state.copy(favorites = filteredFavorites, pageStatuses = emptyMap())
         }
         saveFavorites(filteredFavorites)
+        enforceNewYorkFallbackEntryPolicy()
     }
 
     fun reorderFavorites(fromIndex: Int, toIndex: Int) {
@@ -1096,6 +1099,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
     fun clearFavorites() {
         _uiState.update { it.copy(favorites = emptyList()) }
         saveFavorites(emptyList())
+        enforceNewYorkFallbackEntryPolicy()
         addLog("Favorites cleared")
     }
 
@@ -1113,6 +1117,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 selectedLocation = if (enabled) it.lastLiveLocation ?: it.selectedLocation else it.selectedLocation
             )
         }
+        enforceNewYorkFallbackEntryPolicy()
         saveFollowMode(enabled)
 
         if (enabled) {
@@ -1228,6 +1233,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
                     val liveLoc = LocationItem(name, location.latitude, location.longitude)
                     _uiState.update { it.copy(locationFound = true, lastLiveLocation = liveLoc) }
+                    enforceNewYorkFallbackEntryPolicy()
                     saveLiveLocation(liveLoc)
                     onLocationSelected(liveLoc, isManualSearch = false)
                 } else {
@@ -1579,6 +1585,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
         if (isManualSearch) {
             saveSearchedLocation(_uiState.value.searchedLocation)
         }
+        enforceNewYorkFallbackEntryPolicy()
 
         locationJob?.cancel()
         weatherJob?.cancel()
@@ -1620,6 +1627,7 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
                 searchedLocation = newSearched
             )
         }
+        enforceNewYorkFallbackEntryPolicy()
     }
 
     fun renameLocationDisplayName(location: LocationItem, candidateDisplayName: String?) {
@@ -1933,6 +1941,48 @@ class WeatherViewModel(private val applicationContext: Context) : ViewModel() {
 
     private fun locationKey(location: LocationItem): String {
         return "${location.lat},${location.lon}"
+    }
+
+    private fun isCurrentLocationEntry(state: WeatherUiState, key: String): Boolean {
+        val live = state.lastLiveLocation ?: return false
+        return locationKey(live) == key
+    }
+
+    private fun applyNewYorkFallbackEntryPolicy(state: WeatherUiState): WeatherUiState {
+        val searchedKey = state.searchedLocation?.let(::locationKey)
+        val favoritesContainDefault = state.favorites.any { locationKey(it) == defaultLocationKeyValue }
+        val hasOtherEntry = state.favorites.any { favorite ->
+            val key = locationKey(favorite)
+            key != defaultLocationKeyValue && !isCurrentLocationEntry(state, key)
+        } || (
+            searchedKey != null &&
+                searchedKey != defaultLocationKeyValue &&
+                !isCurrentLocationEntry(state, searchedKey)
+            )
+
+        return when {
+            hasOtherEntry && !favoritesContainDefault && searchedKey == defaultLocationKeyValue -> {
+                state.copy(searchedLocation = null)
+            }
+            !hasOtherEntry && !favoritesContainDefault && searchedKey != defaultLocationKeyValue -> {
+                state.copy(searchedLocation = defaultLocation)
+            }
+            else -> state
+        }
+    }
+
+    private fun enforceNewYorkFallbackEntryPolicy() {
+        var searchedChanged = false
+        var searchedToPersist: LocationItem? = null
+        _uiState.update { state ->
+            val updated = applyNewYorkFallbackEntryPolicy(state)
+            searchedChanged = updated.searchedLocation != state.searchedLocation
+            searchedToPersist = updated.searchedLocation
+            updated
+        }
+        if (searchedChanged) {
+            saveSearchedLocation(searchedToPersist)
+        }
     }
 
     private fun shouldBypassPerLocationGateForDistance(

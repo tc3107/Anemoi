@@ -92,10 +92,19 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
     var pendingPageLoadStartHaptic by remember { mutableStateOf(false) }
 
     var isReady by remember { mutableStateOf(false) }
+    var isLocationPermissionRequestInFlight by remember { mutableStateOf(false) }
+
+    fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
+        isLocationPermissionRequestInFlight = false
         if (permissions.entries.all { it.value }) {
             if (pagerState.currentPage == 0) {
                 viewModel.setFollowMode(true, context)
@@ -103,6 +112,17 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 viewModel.getCurrentLocation(context)
             }
         }
+    }
+
+    fun requestLocationPermissionIfNeeded() {
+        if (hasLocationPermission() || isLocationPermissionRequestInFlight) return
+        isLocationPermissionRequestInFlight = true
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
     }
 
     LaunchedEffect(uiState.selectedLocation) {
@@ -145,15 +165,10 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                 viewModel.clearStatuses()
                 if (settledPage == 0) {
                     if (!latestIsFollowMode) {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        if (hasLocationPermission()) {
                             viewModel.setFollowMode(true, context)
                         } else {
-                            permissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
+                            requestLocationPermissionIfNeeded()
                         }
                     }
                 } else {
@@ -363,17 +378,17 @@ fun WeatherScreen(viewModel: WeatherViewModel) {
                                 tintAlpha = currentTintAlpha,
                                 blurStrength = currentBlurStrength,
                                 onLocateClick = {
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    if (hasLocationPermission()) {
                                         viewModel.getCurrentLocation(context)
                                     } else {
-                                        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                        requestLocationPermissionIfNeeded()
                                     }
                                 },
                                 onLocateLongClick = {
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    if (hasLocationPermission()) {
                                         viewModel.setFollowMode(!uiState.isFollowMode, context)
                                     } else {
-                                        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                        requestLocationPermissionIfNeeded()
                                     }
                                 }
                             )
