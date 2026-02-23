@@ -650,9 +650,10 @@ private fun DailyConditionsDetail(
                     ?.let { getDailyWeatherIconRes(it, context) }
                     ?: 0
                 val isCurrent = toHourKey(point.timeIso) == toHourKey(dayGraphCurrentTimeIso)
+                val showNowLabel = isCurrent && !isMidnightSlot(point.timeIso)
                 DailyConditionTile(
                     iconResId = iconResId,
-                    displayHour = if (isCurrent) "Now" else hourLabel(point.timeIso),
+                    displayHour = if (showNowLabel) "Now" else hourLabel(point.timeIso),
                     isCurrent = isCurrent
                 )
             }
@@ -660,6 +661,7 @@ private fun DailyConditionsDetail(
     }
 }
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun DailyConditionTile(
     iconResId: Int,
@@ -684,9 +686,11 @@ private fun DailyConditionTile(
             .padding(vertical = 10.dp, horizontal = 6.dp)
     ) {
         val density = LocalDensity.current
+        val textMeasurer = rememberTextMeasurer()
         val baseIconSize = 28.dp
         val baseTextSp = 13f
         val baseGap = 8.dp
+        val textWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
         val scale = run {
             val availableHeightPx = with(density) { maxHeight.toPx() }
             val availableWidthPx = with(density) { maxWidth.toPx() }
@@ -709,8 +713,21 @@ private fun DailyConditionTile(
             min(heightScale, widthScale).coerceAtLeast(0.6f)
         }
         val scaledIconSize = (baseIconSize * scale).coerceIn(16.dp, baseIconSize)
-        val scaledTextSp = (baseTextSp * scale).coerceIn(10f, baseTextSp)
+        val scaledTextSp = (baseTextSp * scale).coerceIn(9f, baseTextSp)
         val scaledGap = (baseGap * scale).coerceAtLeast(4.dp)
+        val availableWidthPx = with(density) { maxWidth.toPx() }
+        var fittedTextSp = scaledTextSp
+        while (fittedTextSp > 9f) {
+            val measured = textMeasurer.measure(
+                text = displayHour,
+                style = TextStyle(
+                    fontSize = fittedTextSp.sp,
+                    fontWeight = textWeight
+                )
+            )
+            if (measured.size.width <= availableWidthPx) break
+            fittedTextSp -= 0.5f
+        }
 
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -741,8 +758,8 @@ private fun DailyConditionTile(
             Text(
                 text = displayHour,
                 color = if (isCurrent) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = 0.7f),
-                fontSize = scaledTextSp.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                fontSize = fittedTextSp.sp,
+                fontWeight = textWeight,
                 maxLines = 1
             )
         }
@@ -896,9 +913,15 @@ private fun collapseDailyConditionRepeats(points: List<DayHourlyPoint>): List<Da
 private fun hourLabel(timeIso: String): String {
     return timeIso
         .substringAfter('T', "")
-        .takeIf { it.length >= 2 }
-        ?.substring(0, 2)
+        .takeIf { it.length >= 5 }
+        ?.substring(0, 5)
         ?: "--"
+}
+
+private fun isMidnightSlot(timeIso: String): Boolean {
+    return timeIso
+        .substringAfter('T', "")
+        .startsWith("00:")
 }
 
 private fun toHourKey(timeIso: String?): String? {

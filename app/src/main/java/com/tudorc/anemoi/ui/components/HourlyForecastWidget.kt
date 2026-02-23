@@ -30,7 +30,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,6 +48,7 @@ import java.util.Calendar
 import java.util.Locale
 
 @Composable
+@OptIn(ExperimentalTextApi::class)
 fun HourlyForecastWidget(
     times: List<String>,
     weatherCodes: List<Int>,
@@ -54,6 +59,7 @@ fun HourlyForecastWidget(
     isExpanded: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
+    val textMeasurer = rememberTextMeasurer()
     val fallbackHourKey = remember {
         val c = Calendar.getInstance()
         String.format(
@@ -79,10 +85,10 @@ fun HourlyForecastWidget(
 
         val rawItems = (startIndex until endExclusive).mapNotNull { index ->
             val timeStr = times[index]
-            val hour = extractHour(timeStr) ?: return@mapNotNull null
+            val hhmm = extractHourMinuteLabel(timeStr) ?: return@mapNotNull null
 
             HourlyForecastItem(
-                displayHour = if (index == startIndex) "Now" else String.format(Locale.US, "%02d", hour),
+                displayHour = if (index == startIndex) "Now" else hhmm,
                 fullTime = timeStr,
                 weatherCode = weatherCodes.getOrNull(index) ?: -1,
                 temperature = temperatures.getOrNull(index) ?: 0.0,
@@ -336,14 +342,13 @@ fun HourlyForecastWidget(
 
                                             Spacer(modifier = Modifier.height(4.dp))
 
-                                            Text(
+                                            val labelWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium
+                                            AutoFitTimeLabel(
                                                 text = item.displayHour,
                                                 color = if (item.isCurrent) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.6f),
-                                                fontSize = 14.sp,
-                                                fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                                textAlign = TextAlign.Center,
-                                                maxLines = 1,
-                                                softWrap = false
+                                                fontWeight = labelWeight,
+                                                textMeasurer = textMeasurer,
+                                                modifier = Modifier.fillMaxWidth()
                                             )
                                         }
                                     }
@@ -482,6 +487,48 @@ private data class HourlyForecastItem(
     val isCurrent: Boolean
 )
 
+@OptIn(ExperimentalTextApi::class)
+@Composable
+private fun AutoFitTimeLabel(
+    text: String,
+    color: Color,
+    fontWeight: FontWeight,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    modifier: Modifier = Modifier,
+    maxFontSp: Float = 14f,
+    minFontSp: Float = 10f
+) {
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        val density = LocalDensity.current
+        val maxWidthPx = with(density) { maxWidth.toPx() }
+        var resolvedFontSp = maxFontSp
+        while (resolvedFontSp > minFontSp) {
+            val measured = textMeasurer.measure(
+                text = text,
+                style = TextStyle(
+                    fontSize = resolvedFontSp.sp,
+                    fontWeight = fontWeight
+                )
+            )
+            if (measured.size.width <= maxWidthPx) break
+            resolvedFontSp -= 0.5f
+        }
+
+        Text(
+            text = text,
+            color = color,
+            fontSize = resolvedFontSp.sp,
+            fontWeight = fontWeight,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
 private fun toHourKey(timeIso: String?): String? {
     if (timeIso.isNullOrBlank()) return null
     val separatorIndex = timeIso.indexOf('T')
@@ -489,8 +536,10 @@ private fun toHourKey(timeIso: String?): String? {
     return timeIso.substring(0, separatorIndex + 3)
 }
 
-private fun extractHour(timeIso: String): Int? {
+private fun extractHourMinuteLabel(timeIso: String): String? {
     val separatorIndex = timeIso.indexOf('T')
-    if (separatorIndex <= 0 || separatorIndex + 3 > timeIso.length) return null
-    return timeIso.substring(separatorIndex + 1, separatorIndex + 3).toIntOrNull()
+    if (separatorIndex <= 0 || separatorIndex + 6 > timeIso.length) return null
+    val hour = timeIso.substring(separatorIndex + 1, separatorIndex + 3).toIntOrNull() ?: return null
+    val minute = timeIso.substring(separatorIndex + 4, separatorIndex + 6).toIntOrNull() ?: return null
+    return String.format(Locale.US, "%02d:%02d", hour, minute)
 }
