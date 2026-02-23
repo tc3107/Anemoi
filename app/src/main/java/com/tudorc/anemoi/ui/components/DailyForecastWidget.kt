@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Icon
@@ -42,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -80,6 +82,8 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalTextApi::class)
 @Composable
 fun DailyForecastWidget(
+    infoTitle: String? = null,
+    infoMessage: String? = null,
     dates: List<String>,
     weatherCodes: List<Int>,
     minTemperatures: List<Double>,
@@ -98,6 +102,7 @@ fun DailyForecastWidget(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
+    var showInfoDialog by remember(infoTitle, infoMessage) { mutableStateOf(false) }
     var expandedRowIndex by rememberSaveable(
         dates,
         weatherCodes,
@@ -216,12 +221,33 @@ fun DailyForecastWidget(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Text(
-                text = "10-DAY FORECAST",
-                color = Color.White.copy(alpha = 0.4f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "10-DAY FORECAST",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (!infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clickable { showInfoDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = "Widget info",
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -392,6 +418,14 @@ fun DailyForecastWidget(
                 }
             }
         }
+    }
+
+    if (showInfoDialog && !infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+        WidgetInfoPageDialog(
+            title = infoTitle,
+            message = infoMessage,
+            onDismiss = { showInfoDialog = false }
+        )
     }
 }
 

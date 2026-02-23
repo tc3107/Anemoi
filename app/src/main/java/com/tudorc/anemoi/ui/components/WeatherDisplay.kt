@@ -5,7 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ fun WeatherDisplay(
     staleDetailsLines: List<String> = emptyList()
 ) {
     var showStaleDialog by remember { mutableStateOf(false) }
+    var showTemperatureInfoDialog by remember { mutableStateOf(false) }
     var containerHeightPx by remember { mutableFloatStateOf(0f) }
     var highLowBottomPx by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
@@ -92,12 +96,31 @@ fun WeatherDisplay(
             } else {
                 "Feels like --°"
             }
-            Text(
-                text = feelsLikeText,
-                fontSize = 20.sp,
-                color = secondaryTextColor,
-                textAlign = TextAlign.Center
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = feelsLikeText,
+                    fontSize = 20.sp,
+                    color = secondaryTextColor,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { showTemperatureInfoDialog = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = "Temperature block info",
+                        tint = Color.White.copy(alpha = 0.52f),
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
 
             // High / Low
             val hTemp = if (daily != null && daily.maxTemp.isNotEmpty() && !showDashes) {
@@ -234,5 +257,14 @@ fun WeatherDisplay(
                 }
             }
         }
+    }
+
+    if (showTemperatureInfoDialog) {
+        WidgetInfoPageDialog(
+            title = "Temperature Summary",
+            message = "This main weather block shows the current temperature, feels-like temperature, " +
+                "and today's forecast high and low for the selected location.",
+            onDismiss = { showTemperatureInfoDialog = false }
+        )
     }
 }

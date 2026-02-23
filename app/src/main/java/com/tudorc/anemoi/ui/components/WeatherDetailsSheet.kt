@@ -9,6 +9,9 @@ import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -407,6 +410,9 @@ fun WeatherDetailsSheet(
 
                     DetailWidgetContainer(
                         label = "TEMPERATURE",
+                        infoTitle = "Temperature",
+                        infoMessage = "Shows the hourly air temperature trend. " +
+                            "The chart tracks changes through the day around your current local time.",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(squareSize),
@@ -424,6 +430,9 @@ fun WeatherDetailsSheet(
                     }
                     DetailWidgetContainer(
                         label = "PRECIPITATION",
+                        infoTitle = "Precipitation",
+                        infoMessage = "Shows expected precipitation chance and amount through the day. " +
+                            "Use it to spot likely rain windows and intensity changes.",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(squareSize),
@@ -439,6 +448,9 @@ fun WeatherDetailsSheet(
                         )
                     }
                     DailyForecastWidget(
+                        infoTitle = "10-Day Forecast",
+                        infoMessage = "Summarizes the next ten days with min and max temperatures, " +
+                            "weather condition icons, and precipitation chance. Tap any day for expanded details.",
                         dates = weather?.daily?.time ?: emptyList(),
                         weatherCodes = weather?.daily?.weatherCodes ?: emptyList(),
                         minTemperatures = weather?.daily?.minTemp ?: emptyList(),
@@ -454,6 +466,9 @@ fun WeatherDetailsSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                     HourlyForecastWidget(
+                        infoTitle = "Hourly Condition Changes",
+                        infoMessage = "Shows the next 24 hours but highlights when conditions actually change. " +
+                            "Each tile includes time, weather icon, and temperature.",
                         times = hourlyTimes,
                         weatherCodes = weather?.hourly?.weatherCodes ?: emptyList(),
                         temperatures = weather?.hourly?.temperatures ?: emptyList(),
@@ -470,6 +485,9 @@ fun WeatherDetailsSheet(
                     ) {
                         DetailWidgetContainer(
                             label = "UV INDEX",
+                            infoTitle = "UV Index",
+                            infoMessage = "Displays current UV intensity and risk level. " +
+                                "Higher values mean stronger sun exposure and shorter safe time outdoors.",
                             modifier = Modifier.size(squareSize),
                             contentTopGap = 8.dp
                         ) { _ ->
@@ -481,6 +499,9 @@ fun WeatherDetailsSheet(
 
                         DetailWidgetContainer(
                             label = "PRESSURE",
+                            infoTitle = "Pressure",
+                            infoMessage = "Shows current surface pressure with a local range and trend. " +
+                                "Rising or falling pressure can signal weather pattern changes.",
                             modifier = Modifier.size(squareSize),
                             contentTopGap = 8.dp
                         ) { _ ->
@@ -496,6 +517,10 @@ fun WeatherDetailsSheet(
                     }
                     DetailWidgetContainer(
                         label = "PARTICULATES",
+                        infoTitle = "Particulates",
+                        infoMessage = "Left side shows Dust, PM10 and PM2.5. Right side shows pollen categories " +
+                            "(Trees, Grass, Weeds). Bars represent today's max versus the rolling past 7 plus next 7 day range. " +
+                            "Small gray numbers are the current readings.",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(squareSize),
@@ -509,6 +534,9 @@ fun WeatherDetailsSheet(
                     }
                     DetailWidgetContainer(
                         label = "WIND",
+                        infoTitle = "Wind",
+                        infoMessage = "Shows wind speed and heading, plus current gust and today's max gust. " +
+                            "Compass orientation can be locked to north in settings.",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(squareSize),
@@ -526,6 +554,9 @@ fun WeatherDetailsSheet(
                     }
                     DetailWidgetContainer(
                         label = daylightLabel,
+                        infoTitle = "Sunrise and Sunset",
+                        infoMessage = "Shows daylight progression for the current day, including sunrise, sunset, " +
+                            "and where the current local time sits in that cycle.",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(squareSize),
@@ -550,10 +581,13 @@ fun WeatherDetailsSheet(
 @Composable
 fun DetailWidgetContainer(
     label: String,
+    infoTitle: String? = null,
+    infoMessage: String? = null,
     modifier: Modifier = Modifier,
     contentTopGap: Dp = 8.dp,
     content: @Composable BoxScope.(widgetTopToGraphInset: Dp) -> Unit
 ) {
+    var showInfoDialog by remember(infoTitle, infoMessage) { mutableStateOf(false) }
     val outerGap = 12.dp 
     val labelLineHeight = 12.sp
     val density = LocalDensity.current
@@ -603,14 +637,36 @@ fun DetailWidgetContainer(
         
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(modifier = Modifier.height(outerGap))
-            Text(
-                text = label,
-                color = Color.White.copy(alpha = 0.4f),
-                fontSize = 10.sp,
-                lineHeight = labelLineHeight,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp,
+                    lineHeight = labelLineHeight,
+                    fontWeight = FontWeight.Medium
+                )
+                if (!infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clickable { showInfoDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = "Widget info",
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(contentTopGap))
             Box(
                 modifier = Modifier.weight(1f),
@@ -618,6 +674,14 @@ fun DetailWidgetContainer(
             )
             Spacer(modifier = Modifier.height(outerGap))
         }
+    }
+
+    if (showInfoDialog && !infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+        WidgetInfoPageDialog(
+            title = infoTitle,
+            message = infoMessage,
+            onDismiss = { showInfoDialog = false }
+        )
     }
 }
 

@@ -3,12 +3,16 @@ package com.tudorc.anemoi.ui.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +54,8 @@ import java.util.Locale
 @Composable
 @OptIn(ExperimentalTextApi::class)
 fun HourlyForecastWidget(
+    infoTitle: String? = null,
+    infoMessage: String? = null,
     times: List<String>,
     weatherCodes: List<Int>,
     temperatures: List<Double>,
@@ -60,6 +66,7 @@ fun HourlyForecastWidget(
 ) {
     val haptic = LocalHapticFeedback.current
     val textMeasurer = rememberTextMeasurer()
+    var showInfoDialog by remember(infoTitle, infoMessage) { mutableStateOf(false) }
     val fallbackHourKey = remember {
         val c = Calendar.getInstance()
         String.format(
@@ -227,14 +234,36 @@ fun HourlyForecastWidget(
         if (forecastItems.isEmpty()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "HOURLY CONDITION CHANGES",
-                    color = Color.White.copy(alpha = 0.4f),
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "HOURLY CONDITION CHANGES",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (!infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clickable { showInfoDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "Widget info",
+                                tint = Color.White.copy(alpha = 0.55f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
@@ -250,14 +279,36 @@ fun HourlyForecastWidget(
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "HOURLY CONDITION CHANGES",
-                        color = Color.White.copy(alpha = 0.4f),
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "HOURLY CONDITION CHANGES",
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (!infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { showInfoDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = "Widget info",
+                                    tint = Color.White.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Box(
@@ -391,6 +442,14 @@ fun HourlyForecastWidget(
                 )
             }
         }
+    }
+
+    if (showInfoDialog && !infoTitle.isNullOrBlank() && !infoMessage.isNullOrBlank()) {
+        WidgetInfoPageDialog(
+            title = infoTitle,
+            message = infoMessage,
+            onDismiss = { showInfoDialog = false }
+        )
     }
 }
 
